@@ -203,21 +203,21 @@ export default function TeamDetail() {
 
                                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                             {/* GitHub Card */}
-                                            <div className="border-0 rounded-xl p-4 flex flex-col justify-between gap-4 bg-slate-50/50">
-                                                <div className="flex items-start gap-3">
+                                            <div className="border-0 border-none rounded-xl p-4 flex flex-col justify-between gap-4 bg-slate-50/50 shadow-none ring-0">
+                                                <div className="flex items-start gap-3 min-w-0">
                                                     <div className="w-8 h-8 rounded bg-slate-900 flex items-center justify-center shrink-0">
                                                         {/* Simple GitHub Icon representation */}
                                                         <svg viewBox="0 0 24 24" className="w-5 h-5 text-white" fill="currentColor">
                                                             <path d="M12 2C6.477 2 2 6.477 2 12c0 4.42 2.865 8.166 6.839 9.489.5.092.682-.217.682-.482 0-.237-.008-.866-.013-1.7-2.782.603-3.369-1.34-3.369-1.34-.454-1.156-1.11-1.462-1.11-1.462-.908-.62.069-.608.069-.608 1.003.07 1.531 1.03 1.531 1.03.892 1.529 2.341 1.087 2.91.831.092-.646.35-1.086.636-1.336-2.22-.253-4.555-1.11-4.555-4.943 0-1.091.39-1.984 1.029-2.683-.103-.253-.446-1.27.098-2.647 0 0 .84-.269 2.75 1.025A9.578 9.578 0 0112 6.836c.85.004 1.705.114 2.504.336 1.909-1.294 2.747-1.025 2.747-1.025.546 1.377.203 2.394.1 2.647.64.699 1.028 1.592 1.028 2.683 0 3.842-2.339 4.687-4.566 4.935.359.309.678.919.678 1.852 0 1.336-.012 2.415-.012 2.743 0 .267.18.578.688.48C19.138 20.161 22 16.416 22 12c0-5.523-4.477-10-10-10z" />
                                                         </svg>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <p className="font-semibold text-slate-800 text-sm">GitHub Repository</p>
-                                                                <p className="text-xs text-slate-500">https://github.com/swarmsynthetix/core-arbiter</p>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="font-semibold text-slate-800 text-sm truncate">GitHub Repository</p>
+                                                                <p className="text-xs text-slate-500 truncate">https://github.com/swarmsynthetix/core-arbiter</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-none border-0 shadow-none ring-0">Main Branch</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] shrink-0 border-none border-0 shadow-none ring-0">Main Branch</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
@@ -228,20 +228,20 @@ export default function TeamDetail() {
 
                                             {/* Loom Card */}
                                             <div className="border-0 border-none rounded-xl p-4 flex flex-col justify-between gap-4 bg-slate-50/50 shadow-none ring-0">
-                                                <div className="flex items-start gap-3">
+                                                <div className="flex items-start gap-3 min-w-0">
                                                     <div className="w-8 h-8 rounded bg-[#625DF5] flex items-center justify-center shrink-0">
                                                         {/* Simple Loom Icon representation */}
                                                         <svg viewBox="0 0 24 24" className="w-4 h-4 text-white" fill="currentColor">
                                                             <path d="M24 10.6h-8.4l5.9-5.9-2.1-2.1-5.9 5.9V0H10.6v8.4L4.7 2.5 2.6 4.6l5.9 5.9H0v2.9h8.4l-5.9 5.9 2.1 2.1 5.9-5.9V24h2.9v-8.4l5.9 5.9 2.1-2.1-5.9-5.9H24v-2.9z" />
                                                         </svg>
                                                     </div>
-                                                    <div className="flex-1">
-                                                        <div className="flex justify-between items-start">
-                                                            <div>
-                                                                <p className="font-semibold text-slate-800 text-sm">Loom Video Walkthrough</p>
-                                                                <p className="text-xs text-slate-500">https://loom.com/share/fc83...synthetic-demo</p>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex justify-between items-start gap-2">
+                                                            <div className="min-w-0">
+                                                                <p className="font-semibold text-slate-800 text-sm truncate">Loom Video Walkthrough</p>
+                                                                <p className="text-xs text-slate-500 truncate">https://loom.com/share/fc83...synthetic-demo</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-none border-0 shadow-none ring-0">1080p HD</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] shrink-0 border-none border-0 shadow-none ring-0">1080p HD</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
