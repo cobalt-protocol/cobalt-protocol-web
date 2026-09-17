@@ -110,7 +110,7 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Main Info Card --- */}
-                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 ring-0 shadow-none rounded-xl overflow-hidden bg-white">
                     <CardContent className="p-6 md:p-8">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                             <div className="space-y-3">
@@ -169,7 +169,7 @@ export default function CompetitionDetail() {
                 </Card>
 
                 {/* --- Search & Filter Bar --- */}
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 ring-0 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 ring-0 shadow-none">
                     <div className="relative w-full sm:w-96">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
@@ -183,7 +183,7 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Teams Table --- */}
-                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white py-0">
+                <Card className="border-0 ring-0 shadow-none rounded-xl overflow-hidden bg-white py-0">
                     <Table>
                         <TableHeader className="bg-[#EFF4FF] border-0 [&_tr]:border-b-0">
                             <TableRow className="bg-[#EFF4FF] hover:bg-[#EFF4FF] border-0 border-b-0">
