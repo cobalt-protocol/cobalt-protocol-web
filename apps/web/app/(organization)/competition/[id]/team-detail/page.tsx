@@ -217,11 +217,11 @@ export default function TeamDetail() {
                                                                 <p className="font-semibold text-slate-800 text-sm">GitHub Repository</p>
                                                                 <p className="text-xs text-slate-500">https://github.com/swarmsynthetix/core-arbiter</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px]">Main Branch</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-0">Main Branch</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium">
+                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0">
                                                     Open submission link <ExternalLink className="w-3 h-3 ml-1.5" />
                                                 </Button>
                                             </div>
@@ -241,11 +241,11 @@ export default function TeamDetail() {
                                                                 <p className="font-semibold text-slate-800 text-sm">Loom Video Walkthrough</p>
                                                                 <p className="text-xs text-slate-500">https://loom.com/share/fc83...synthetic-demo</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px]">1080p HD</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-0">1080p HD</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium">
+                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0">
                                                     Open submission link <ExternalLink className="w-3 h-3 ml-1.5" />
                                                 </Button>
                                             </div>
