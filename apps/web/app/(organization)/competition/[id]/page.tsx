@@ -185,9 +185,9 @@ export default function CompetitionDetail() {
                 {/* --- Teams Table --- */}
                 <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white">
                     <Table>
-                        <TableHeader className="bg-slate-50/80 border-0 [&_tr]:border-b-0">
-                            <TableRow className="hover:bg-transparent border-0 border-b-0">
-                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[30%]">TEAM NAME</TableHead>
+                        <TableHeader className="bg-[#EFF4FF] border-0 [&_tr]:border-b-0">
+                            <TableRow className="bg-[#EFF4FF] hover:bg-[#EFF4FF] border-0 border-b-0">
+                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 pl-6 w-[30%]">TEAM NAME</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right pr-6">SUBMISSION STATUS</TableHead>
@@ -196,7 +196,7 @@ export default function CompetitionDetail() {
                         <TableBody>
                             {teamsData.map((team) => (
                                 <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
-                                    <TableCell className="py-4">
+                                    <TableCell className="py-4 pl-6">
                                         <div className="flex items-center gap-3">
                                             <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
                                                 {team.initials}
