@@ -1,55 +1,27 @@
-# Stage 1: Base image
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:1-alpine
 
-# Stage 2: Install dependencies
-FROM base AS deps
 WORKDIR /app
 
-# Copy root workspace configurations and package files
+# Copy package configs for workspace
 COPY package.json bun.lock turbo.json ./
 COPY apps/web/package.json ./apps/web/
 COPY packages/ui/package.json ./packages/ui/
 COPY packages/eslint-config/package.json ./packages/eslint-config/
 COPY packages/typescript-config/package.json ./packages/typescript-config/
 
-# Install workspace dependencies
+# Install dependencies
 RUN bun install --frozen-lockfile
 
-# Stage 3: Build application
-FROM base AS builder
-WORKDIR /app
-
-# Copy all installed dependencies (including nested workspace node_modules) from deps stage
-COPY --from=deps /app ./
-# Copy workspace source files
+# Copy source code and build
 COPY . .
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Build Next.js application with Turborepo
 RUN bun run build
 
-# Stage 4: Production runner
-FROM node:20-alpine AS runner
-WORKDIR /app
-
-ARG PORT=3000
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=${PORT}
+EXPOSE 3000
+ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-
-# Copy static assets and standalone application build
-COPY --from=builder /app/apps/web/public ./apps/web/public
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/.next/static
-
-USER nextjs
-
-EXPOSE ${PORT}
-
-CMD ["node", "apps/web/server.js"]
+CMD ["node", "apps/web/.next/standalone/apps/web/server.js"]
