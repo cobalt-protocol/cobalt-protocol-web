@@ -8,7 +8,7 @@ export function SiteFooter() {
   const linkClass =
     "block text-left text-xs leading-6 text-muted-foreground hover:text-primary"
   return (
-    <footer className="bg-secondary/60">
+    <footer className="bg-[#E5EEFF]">
       <div className="mx-auto max-w-7xl px-5 py-12 md:px-10">
         <div className="grid gap-8 sm:grid-cols-2 lg:grid-cols-[2fr_repeat(4,1fr)]">
           <div>

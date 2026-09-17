@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import NavBar from "@/components/navbar";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Badge } from "@workspace/ui/components/badge";
@@ -125,9 +124,8 @@ export default function CompetitionListPage() {
     }, [search, status, category]);
 
     return (
-        <>
-            <NavBar />
-            <div className="flex flex-col min-h-screen bg-[#E5EEFF] ps-33.5 pe-33.5 pt-10 pb-16">
+        <div className="w-full bg-[#E5EEFF] py-10">
+            <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
                 {/* Header */}
                 <div className="flex flex-col gap-1">
                     <h1 className="text-black font-bold text-2xl">Competition List</h1>
@@ -161,9 +159,9 @@ export default function CompetitionListPage() {
 
                     <div className="flex gap-4 w-full md:w-auto">
                         <Select
-                            value={category}
+                            value={status}
                             onValueChange={(v) => {
-                                if (v !== null) setCategory(v);
+                                if (v !== null) setStatus(v as StatusFilter);
                             }}
                         >
                             <SelectTrigger className="w-full md:w-37.5 border-0 bg-[#F8FAFC] focus:ring-0 text-sm h-10">
@@ -269,6 +267,6 @@ export default function CompetitionListPage() {
                     )}
                 </div>
             </div>
-        </>
+        </div>
     );
 }
