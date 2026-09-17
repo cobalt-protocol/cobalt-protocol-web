@@ -244,7 +244,7 @@ export default function CompetitionListPage() {
                                             {comp.prize}
                                         </span>
                                     </div>
-                                    <div className="w-full rounded-lg p-[10px] bg-white flex items-center justify-between">
+                                    <div className="w-full rounded-lg p-2.5 bg-white flex items-center justify-between">
                                         <Button
                                             variant="link"
                                             className="w-full px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex flex-row items-center justify-between h-auto"
