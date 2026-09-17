@@ -34,9 +34,10 @@ RUN bun run build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+ARG PORT=3000
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
+ENV PORT=${PORT}
 ENV HOSTNAME="0.0.0.0"
 
 RUN addgroup --system --gid 1001 nodejs
@@ -49,7 +50,7 @@ COPY --from=builder --chown=nextjs:nodejs /app/apps/web/.next/static ./apps/web/
 
 USER nextjs
 
-EXPOSE 3000
+EXPOSE ${PORT}
 
 CMD ["node", "apps/web/server.js"]
 

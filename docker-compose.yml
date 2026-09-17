@@ -5,6 +5,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.prod
+      args:
+        PORT: ${PORT:-3000}
     container_name: cobalt-protocol-web
     restart: unless-stopped
     env_file:
