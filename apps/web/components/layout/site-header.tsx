@@ -1,7 +1,6 @@
 "use client"
 import { Anchor, UserRound } from "lucide-react"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { Button } from "@workspace/ui/components/button"
 import { routes } from "@/lib/routes"
 import { useSiteActions } from "./site-actions"
@@ -23,7 +22,6 @@ export function Brand() {
 }
 export function SiteHeader() {
   const { openWallet } = useSiteActions()
-  const pathname = usePathname()
   return (
     <header className="border-b border-border/30 bg-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-5 md:px-10">
@@ -32,15 +30,6 @@ export function SiteHeader() {
           aria-label="Main navigation"
           className="flex items-center gap-3 sm:gap-5"
         >
-          <Link
-            href={routes.competitions}
-            aria-current={
-              pathname.startsWith(routes.competitions) ? "page" : undefined
-            }
-            className="text-xs font-semibold hover:text-primary aria-[current=page]:text-primary sm:text-sm"
-          >
-            Competitions
-          </Link>
           <Button className="h-9 px-3 text-xs sm:text-sm" onClick={openWallet}>
             Connect Wallet
           </Button>

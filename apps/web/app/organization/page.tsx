@@ -7,7 +7,6 @@ import { Input } from "@workspace/ui/components/input";
 import { Badge } from "@workspace/ui/components/badge";
 import {
     Card,
-    CardContent,
     CardFooter,
     CardHeader,
 } from "@workspace/ui/components/card";
@@ -205,7 +204,7 @@ export default function CompetitionListPage() {
                         return (
                             <Card
                                 key={comp.id}
-                                className="flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow border-slate-200 bg-white"
+                                className="flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow border-0 ring-0 bg-white"
                             >
                                 <CardHeader className="pb-4">
                                     <div className="flex justify-between items-start mb-4">
@@ -236,8 +235,8 @@ export default function CompetitionListPage() {
                                     </div>
                                 </CardHeader>
 
-                                <CardContent className="pb-4">
-                                    <div className="flex justify-between items-end border-t border-slate-100 pt-4">
+                                <CardFooter className="flex flex-col gap-3 border-0 bg-[#EFF4FF]/40 p-4 rounded-b-xl">
+                                    <div className="flex flex-row justify-between items-center w-full">
                                         <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
                                             Prize Pool
                                         </span>
@@ -245,16 +244,15 @@ export default function CompetitionListPage() {
                                             {comp.prize}
                                         </span>
                                     </div>
-                                </CardContent>
-
-                                <CardFooter className="pt-0">
-                                    <Button
-                                        variant="link"
-                                        className="px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1 h-auto"
-                                    >
-                                        View Competition Detail
-                                        <ArrowRight className="h-4 w-4" />
-                                    </Button>
+                                    <div className="w-full border border-slate-200 rounded-lg p-[10px] bg-white flex items-center justify-between">
+                                        <Button
+                                            variant="link"
+                                            className="px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1 h-auto"
+                                        >
+                                            View Competition Detail
+                                            <ArrowRight className="h-4 w-4" />
+                                        </Button>
+                                    </div>
                                 </CardFooter>
                             </Card>
                         );
