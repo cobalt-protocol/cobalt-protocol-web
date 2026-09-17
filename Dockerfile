@@ -1,30 +1,34 @@
-FROM oven/bun:1-alpine
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Copy package configs for workspace
-COPY package.json bun.lock turbo.json ./
-COPY apps/web/package.json ./apps/web/
-COPY packages/ui/package.json ./packages/ui/
-COPY packages/eslint-config/package.json ./packages/eslint-config/
-COPY packages/typescript-config/package.json ./packages/typescript-config/
+# Install Bun
+RUN npm install -g bun
 
-# Install dependencies
+COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 
-# Copy source code and build
 COPY . .
-
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-
 RUN bun run build
 
-EXPOSE 3002
-ENV PORT=3002
-ENV HOSTNAME="0.0.0.0"
+FROM node:22-alpine AS runner
 
-CMD ["bun", "--cwd", "apps/web", "start", "-H", "0.0.0.0", "-p", "3002"]
+WORKDIR /app
 
+# Install Bun
+RUN npm install -g bun
 
+# Install production dependencies only
+COPY package.json bun.lock ./
+RUN bun install --frozen-lockfile --production
 
+# Copy built assets
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+
+EXPOSE 3000
+ENV PORT=3000
+ENV NODE_ENV=production
+
+# Run the Next.js production server
+CMD ["bun", "run", "start"]
