@@ -68,9 +68,9 @@ const teamsData = [
 
 const StatusBadge = ({ status }: { status: string }) => {
     const styles: Record<string, string> = {
-        Submitted: "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50",
-        "Under Review": "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-50",
-        Incomplete: "bg-red-50 text-red-700 border-red-200 hover:bg-red-50",
+        Submitted: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
+        "Under Review": "bg-blue-50 text-blue-700 hover:bg-blue-50",
+        Incomplete: "bg-red-50 text-red-700 hover:bg-red-50",
     };
 
     const dotColors: Record<string, string> = {
@@ -80,7 +80,7 @@ const StatusBadge = ({ status }: { status: string }) => {
     };
 
     return (
-        <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit ${styles[status]}`}>
+        <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[status]}`}>
             <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status]}`} />
             {status}
         </Badge>
@@ -103,14 +103,14 @@ export default function CompetitionDetail() {
                         <h1 className="text-3xl font-bold tracking-tight text-slate-900">Competition Detail</h1>
                         <p className="text-slate-500 mt-1">Review competition information, monitor participating teams, and determine the winners.</p>
                     </div>
-                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200 px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2">
+                    <Badge variant="outline" className="bg-blue-50 text-blue-700 border-0 px-3 py-1.5 rounded-full text-xs font-semibold tracking-wide flex items-center gap-2">
                         <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
                         EVALUATION PROTOCOL ACTIVE
                     </Badge>
                 </div>
 
                 {/* --- Main Info Card --- */}
-                <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 shadow-sm rounded-xl overflow-hidden bg-white">
                     <CardContent className="p-6 md:p-8">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                             <div className="space-y-3">
@@ -135,7 +135,7 @@ export default function CompetitionDetail() {
                         {/* Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Category */}
-                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 flex flex-col gap-2">
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
                                 <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
                                     <Target className="w-4 h-4 mr-2 text-blue-500" />
                                     Competition Category
@@ -144,7 +144,7 @@ export default function CompetitionDetail() {
                             </div>
 
                             {/* Prize Pool */}
-                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 flex flex-col gap-2">
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
                                 <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
                                     <Trophy className="w-4 h-4 mr-2 text-blue-500" />
                                     Prize Pool
@@ -156,7 +156,7 @@ export default function CompetitionDetail() {
                             </div>
 
                             {/* Duration */}
-                            <div className="bg-slate-50 p-5 rounded-xl border border-slate-100 flex flex-col gap-2">
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
                                 <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
                                     <Clock className="w-4 h-4 mr-2 text-blue-500" />
                                     Competition Duration
@@ -169,7 +169,7 @@ export default function CompetitionDetail() {
                 </Card>
 
                 {/* --- Search & Filter Bar --- */}
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border border-slate-200 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 shadow-sm">
                     <div className="relative w-full sm:w-96">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
@@ -183,10 +183,10 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Teams Table --- */}
-                <Card className="border-slate-200 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 shadow-sm rounded-xl overflow-hidden bg-white">
                     <Table>
-                        <TableHeader className="bg-slate-50/80 border-b border-slate-200">
-                            <TableRow className="hover:bg-transparent">
+                        <TableHeader className="bg-slate-50/80 border-0">
+                            <TableRow className="hover:bg-transparent border-0">
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[30%]">TEAM NAME</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
@@ -195,7 +195,7 @@ export default function CompetitionDetail() {
                         </TableHeader>
                         <TableBody>
                             {teamsData.map((team) => (
-                                <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100 last:border-0">
+                                <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0">
                                     <TableCell className="py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
