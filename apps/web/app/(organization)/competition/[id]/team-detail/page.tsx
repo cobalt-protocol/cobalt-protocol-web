@@ -73,7 +73,7 @@ export default function TeamDetail() {
                                                 <p className="text-xs text-slate-500">alex.rivera@agentmail.com</p>
                                             </div>
                                         </div>
-                                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 font-medium text-[10px] uppercase">
+                                        <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 font-medium text-[10px] uppercase border-none border-0 shadow-none ring-0">
                                             Primary Contact
                                         </Badge>
                                     </div>
@@ -122,7 +122,7 @@ export default function TeamDetail() {
                                             <h3 className="font-semibold text-slate-900">Hackathon Deliverable</h3>
                                         </div>
                                     </div>
-                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-0 hover:bg-emerald-50 w-fit px-3 py-1">
+                                    <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-none border-0 hover:bg-emerald-50 w-fit px-3 py-1 shadow-none ring-0">
                                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mr-2" />
                                         Submission Finalized
                                     </Badge>
@@ -217,17 +217,17 @@ export default function TeamDetail() {
                                                                 <p className="font-semibold text-slate-800 text-sm">GitHub Repository</p>
                                                                 <p className="text-xs text-slate-500">https://github.com/swarmsynthetix/core-arbiter</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-0">Main Branch</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-none border-0 shadow-none ring-0">Main Branch</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0">
+                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0 border-none shadow-none ring-0">
                                                     Open submission link <ExternalLink className="w-3 h-3 ml-1.5" />
                                                 </Button>
                                             </div>
 
                                             {/* Loom Card */}
-                                            <div className="border-0 rounded-xl p-4 flex flex-col justify-between gap-4 bg-slate-50/50">
+                                            <div className="border-0 border-none rounded-xl p-4 flex flex-col justify-between gap-4 bg-slate-50/50 shadow-none ring-0">
                                                 <div className="flex items-start gap-3">
                                                     <div className="w-8 h-8 rounded bg-[#625DF5] flex items-center justify-center shrink-0">
                                                         {/* Simple Loom Icon representation */}
@@ -241,11 +241,11 @@ export default function TeamDetail() {
                                                                 <p className="font-semibold text-slate-800 text-sm">Loom Video Walkthrough</p>
                                                                 <p className="text-xs text-slate-500">https://loom.com/share/fc83...synthetic-demo</p>
                                                             </div>
-                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-0">1080p HD</Badge>
+                                                            <Badge variant="secondary" className="bg-slate-100 text-slate-600 text-[10px] border-none border-0 shadow-none ring-0">1080p HD</Badge>
                                                         </div>
                                                     </div>
                                                 </div>
-                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0">
+                                                <Button variant="secondary" className="w-full bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-medium border-0 border-none shadow-none ring-0">
                                                     Open submission link <ExternalLink className="w-3 h-3 ml-1.5" />
                                                 </Button>
                                             </div>
