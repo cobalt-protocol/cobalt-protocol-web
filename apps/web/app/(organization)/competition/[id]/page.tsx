@@ -89,7 +89,7 @@ const StatusBadge = ({ status }: { status: string }) => {
 
 export default function CompetitionDetail() {
     return (
-        <div className="w-full bg-[#E5EEFF] py-10">
+        <div className="w-full bg-[#F8F9FF] py-10">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col space-y-6">
 
                 {/* --- Header Section --- */}
