@@ -1,6 +1,7 @@
 "use client"
-import { Anchor, UserRound } from "lucide-react"
+import { UserRound } from "lucide-react"
 import Link from "next/link"
+import Image from "next/image"
 import { Button } from "@workspace/ui/components/button"
 import { routes } from "@/lib/routes"
 import { useSiteActions } from "./site-actions"
@@ -11,12 +12,13 @@ export function Brand() {
       aria-label="Cobalt Protocol home"
       className="inline-flex items-center gap-2 font-heading text-lg font-extrabold tracking-tight"
     >
-      <span className="flex size-9 items-center justify-center rounded-lg bg-primary text-white">
-        <Anchor size={24} />
-      </span>
-      <span>
-        Cobalt<span className="text-primary">Protocol</span>
-      </span>
+      <Image
+        src="/icon.webp"
+        alt="Cobalt Protocol logo"
+        width={200}
+        height={50}
+        className="h-auto w-[200px] object-contain"
+      />
     </Link>
   )
 }

@@ -81,8 +81,8 @@ const statusStyles: Record<CompetitionStatus, { badge: string; dot: string }> =
         dot: "bg-[#2563EB]",
     },
     Judging: {
-        badge: "bg-[#E5E7FF] text-[#4F46E5] hover:bg-[#E5E7FF]",
-        dot: "bg-[#4F46E5]",
+        badge: "bg-[#E5E7FF] text-[#565E74] hover:bg-[#E5E7FF]",
+        dot: "bg-[#565E74]",
     },
     Registration: {
         badge: "bg-[#D7F5EE] text-[#0D9488] hover:bg-[#D7F5EE]",
@@ -244,12 +244,12 @@ export default function CompetitionListPage() {
                                             {comp.prize}
                                         </span>
                                     </div>
-                                    <div className="w-full border border-slate-200 rounded-lg p-[10px] bg-white flex items-center justify-between">
+                                    <div className="w-full rounded-lg p-[10px] bg-white flex items-center justify-between">
                                         <Button
                                             variant="link"
-                                            className="px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1 h-auto"
+                                            className="w-full px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex flex-row items-center justify-between h-auto"
                                         >
-                                            View Competition Detail
+                                            <span>View Competition Detail</span>
                                             <ArrowRight className="h-4 w-4" />
                                         </Button>
                                     </div>

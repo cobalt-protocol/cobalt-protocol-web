@@ -14,7 +14,6 @@ import {
   Zap,
 } from "lucide-react"
 import { routes } from "@/lib/routes"
-import { useSiteActions } from "@/components/layout/site-actions"
 import styles from "./home.module.css"
 const lifecycle = [
   {
@@ -42,7 +41,6 @@ const lifecycle = [
 ]
 
 export function HeroSection() {
-  const { showNotice } = useSiteActions()
   return (
     <section className={styles["hero"]}>
       <div className={styles["site-container"]}>
@@ -70,16 +68,12 @@ export function HeroSection() {
             >
               Explore Competitions <ArrowRight size={17} />
             </Link>
-            <button
+            <Link
               className={styles["action-white"]}
-              onClick={() =>
-                showNotice(
-                  "The organizer workspace is coming next. You’ll be able to create competitions, fund prize pools, and review submissions here."
-                )
-              }
+              href={routes.organization}
             >
               I&apos;m an Organizer <ExternalLink size={16} />
-            </button>
+            </Link>
           </div>
         </div>
         <div className={styles["stats-grid"]}>

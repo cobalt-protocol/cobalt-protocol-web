@@ -9,8 +9,8 @@ const NavBar = () => {
                     <Image
                         src="/icon.webp"
                         alt="Logo"
-                        width={200}
-                        height={200}
+                        width={300}
+                        height={300}
                     />
                 </a>
 

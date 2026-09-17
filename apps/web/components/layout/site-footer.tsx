@@ -30,14 +30,9 @@ export function SiteFooter() {
           </div>
           <div>
             <h2 className="mb-3 text-sm font-bold">For Organizers</h2>
-            <button
-              className={linkClass}
-              onClick={() =>
-                showNotice("The organizer workspace is coming next.")
-              }
-            >
+            <Link href={routes.organization} className={linkClass}>
               Host Competition
-            </button>
+            </Link>
             <button className={linkClass} onClick={openWallet}>
               Connect Wallet
             </button>
