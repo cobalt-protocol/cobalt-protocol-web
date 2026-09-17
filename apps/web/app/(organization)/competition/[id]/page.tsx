@@ -110,7 +110,7 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Main Info Card --- */}
-                <Card className="border-0 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white">
                     <CardContent className="p-6 md:p-8">
                         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
                             <div className="space-y-3">
@@ -121,7 +121,7 @@ export default function CompetitionDetail() {
                                 <h2 className="text-3xl font-bold text-slate-900">Autonomous Agents Global Hackathon 2025</h2>
                             </div>
                             <div className="flex items-center gap-3 shrink-0">
-                                <Button variant="outline" className="text-slate-600 font-medium">
+                                <Button variant="outline" className="text-slate-600 font-medium border-0 bg-slate-100 hover:bg-slate-200">
                                     <BookOpen className="w-4 h-4 mr-2" />
                                     View Guidebook
                                 </Button>
@@ -169,7 +169,7 @@ export default function CompetitionDetail() {
                 </Card>
 
                 {/* --- Search & Filter Bar --- */}
-                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 shadow-sm">
+                <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 ring-0 shadow-sm">
                     <div className="relative w-full sm:w-96">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
@@ -183,10 +183,10 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Teams Table --- */}
-                <Card className="border-0 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white">
                     <Table>
-                        <TableHeader className="bg-slate-50/80 border-0">
-                            <TableRow className="hover:bg-transparent border-0">
+                        <TableHeader className="bg-slate-50/80 border-0 [&_tr]:border-b-0">
+                            <TableRow className="hover:bg-transparent border-0 border-b-0">
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[30%]">TEAM NAME</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
                                 <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
@@ -195,7 +195,7 @@ export default function CompetitionDetail() {
                         </TableHeader>
                         <TableBody>
                             {teamsData.map((team) => (
-                                <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0">
+                                <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
                                     <TableCell className="py-4">
                                         <div className="flex items-center gap-3">
                                             <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
