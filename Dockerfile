@@ -24,5 +24,6 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["bun", "--cwd", "apps/web", "start"]
+CMD ["bun", "--cwd", "apps/web", "start", "-H", "0.0.0.0"]
+
 

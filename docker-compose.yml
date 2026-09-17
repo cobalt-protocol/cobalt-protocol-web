@@ -15,4 +15,12 @@ services:
       - NODE_ENV=production
       - PORT=${PORT:-3000}
       - HOSTNAME=0.0.0.0
+    networks:
+      - dokploy-network
+
+networks:
+  dokploy-network:
+    name: dokploy-network
+    external: true
+
 
