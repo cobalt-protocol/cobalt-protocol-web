@@ -183,14 +183,14 @@ export default function CompetitionDetail() {
                 </div>
 
                 {/* --- Teams Table --- */}
-                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white">
+                <Card className="border-0 ring-0 shadow-sm rounded-xl overflow-hidden bg-white py-0">
                     <Table>
                         <TableHeader className="bg-[#EFF4FF] border-0 [&_tr]:border-b-0">
                             <TableRow className="bg-[#EFF4FF] hover:bg-[#EFF4FF] border-0 border-b-0">
-                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 pl-6 w-[30%]">TEAM NAME</TableHead>
-                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
-                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
-                                <TableHead className="text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right pr-6">SUBMISSION STATUS</TableHead>
+                                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 pl-6 w-[30%]">TEAM NAME</TableHead>
+                                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
+                                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
+                                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right pr-6">SUBMISSION STATUS</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
