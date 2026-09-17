@@ -20,10 +20,11 @@ ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN bun run build
 
-EXPOSE 3000
-ENV PORT=3000
+EXPOSE 3002
+ENV PORT=3002
 ENV HOSTNAME="0.0.0.0"
 
-CMD ["bun", "--cwd", "apps/web", "start", "-H", "0.0.0.0"]
+CMD ["bun", "--cwd", "apps/web", "start", "-H", "0.0.0.0", "-p", "3002"]
+
 
 

@@ -7,20 +7,13 @@ services:
       dockerfile: Dockerfile.prod
     container_name: cobalt-protocol-web
     restart: unless-stopped
-    env_file:
-      - .env
     ports:
-      - "${PORT:-3000}:${PORT:-3000}"
+      - "3002:3002"
     environment:
       - NODE_ENV=production
-      - PORT=${PORT:-3000}
+      - PORT=3002
       - HOSTNAME=0.0.0.0
-    networks:
-      - dokploy-network
 
-networks:
-  dokploy-network:
-    name: dokploy-network
-    external: true
+
 
 
