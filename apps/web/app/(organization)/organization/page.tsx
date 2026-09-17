@@ -145,7 +145,7 @@ export default function CompetitionListPage() {
                 </div>
 
                 {/* Filters */}
-                <div className="mt-8 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-2 rounded-xl shadow-sm border border-slate-100">
+                <div className="mt-8 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-2 rounded-xl shadow-sm border-0">
                     <div className="relative w-full md:w-1/2">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
