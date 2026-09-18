@@ -81,7 +81,7 @@ const statusStyles: Record<CompetitionStatus, { badge: string; dot: string }> =
         dot: "bg-[#2563EB]",
     },
     Judging: {
-        badge: "bg-[#E5E7FF] text-[#565E74] hover:bg-[#E5E7FF]",
+        badge: "bg-[#E5EEFF] text-[#565E74] hover:bg-[#E5EEFF]",
         dot: "bg-[#565E74]",
     },
     Registration: {
@@ -89,8 +89,8 @@ const statusStyles: Record<CompetitionStatus, { badge: string; dot: string }> =
         dot: "bg-[#0D9488]",
     },
     Completed: {
-        badge: "bg-[#F1F5F9] text-[#64748B] hover:bg-[#F1F5F9]",
-        dot: "bg-[#64748B]",
+        badge: "bg-[#E5EEFF] text-[#565E74] hover:bg-[#E5EEFF]",
+        dot: "bg-[#565E74]",
     },
 };
 
