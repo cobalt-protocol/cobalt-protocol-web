@@ -22,16 +22,18 @@ import { skillLevels, type BuilderProfile, type SkillLevel } from "../types"
 export function ProfileEditor({
   initialProfile,
   onSave,
+  startEditing = false,
 }: {
   initialProfile: BuilderProfile
   onSave: (profile: BuilderProfile) => boolean
+  startEditing?: boolean
 }) {
   const [profile, setProfile] = useState(initialProfile)
-  const [editing, setEditing] = useState(false)
+  const [editing, setEditing] = useState(startEditing)
   const [skillName, setSkillName] = useState("")
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
-  const { openWallet } = useSiteActions()
+  const { openWallet, connected, disconnectWallet } = useSiteActions()
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = {
@@ -42,8 +44,16 @@ export function ProfileEditor({
       institution: profile.institution.trim(),
       pitch: profile.pitch.trim(),
     }
-    if (!next.username || !next.location || !next.institution || !next.pitch) {
-      setFeedback("Please complete all profile fields.")
+    if (
+      !next.username ||
+      !next.location ||
+      !next.institution ||
+      !next.pitch ||
+      next.skills.length === 0
+    ) {
+      setFeedback(
+        "Please complete all profile fields and add at least one skill."
+      )
       return
     }
     if (!onSave(next)) {
@@ -116,19 +126,27 @@ export function ProfileEditor({
             <h2 className="text-xs font-semibold uppercase">
               Web3 settlement vault
             </h2>
-            <Badge tone="neutral">Not connected</Badge>
+            <Badge tone={connected ? "green" : "neutral"}>
+              {connected ? "Connected · Preview" : "Not connected"}
+            </Badge>
           </div>
           <div className="my-5 rounded-xl bg-secondary/60 p-4">
             <p className="text-xs">Arbitrum One</p>
             <p className="mt-3 text-sm font-bold">
-              Connect your wallet to view vault
+              {connected
+                ? "Wallet connected in preview mode"
+                : "Connect your wallet to view vault"}
             </p>
           </div>
-          <Button type="button" onClick={openWallet} className="h-10 w-full">
-            Connect Wallet
+          <Button
+            type="button"
+            onClick={connected ? disconnectWallet : openWallet}
+            className="h-10 w-full"
+          >
+            {connected ? "Disconnect Wallet" : "Connect Wallet"}
           </Button>
           <p className="mt-4 text-xs text-muted-foreground">
-            Balance is unavailable until a wallet is connected.
+            Real balances will be available after wallet integration.
           </p>
         </Panel>
       </div>

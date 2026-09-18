@@ -9,8 +9,18 @@ import {
   profileStorageKey,
 } from "../data/profile"
 import { ProfileEditor } from "./profile-editor"
+import { useSiteActions } from "@/components/layout/site-actions"
+import type { RegistrationCompetition } from "@/features/registration/types"
+import { isProfileComplete } from "@/features/registration/lib/registration-validation"
 
-export function ProfilePage() {
+export function ProfilePage({
+  resumeCompetition,
+  startEditing = false,
+}: {
+  resumeCompetition?: RegistrationCompetition
+  startEditing?: boolean
+}) {
+  const { register } = useSiteActions()
   const { value, save, ready } = useBrowserDraft(
     profileStorageKey,
     mockProfile,
@@ -36,10 +46,14 @@ export function ProfilePage() {
       )}
       {ready ? (
         <ProfileEditor
+          key={resumeCompetition?.slug ?? (startEditing ? "setup" : "profile")}
           initialProfile={value}
+          startEditing={startEditing || !!resumeCompetition}
           onSave={(next) => {
             const success = save(next)
             setSaved(success)
+            if (success && resumeCompetition && isProfileComplete(next))
+              register(resumeCompetition, next)
             return success
           }}
         />
