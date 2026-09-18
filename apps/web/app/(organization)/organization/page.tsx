@@ -204,11 +204,7 @@ export default function CompetitionListPage() {
                         return (
                             <Card
                                 key={comp.id}
-<<<<<<< HEAD:apps/web/app/(organization)/organization/page.tsx
                                 className="flex flex-col justify-between shadow-none border-0 ring-0 bg-white"
-=======
-                                className="flex flex-col justify-between shadow-sm hover:shadow-md transition-shadow border-0 ring-0 bg-white"
->>>>>>> 3999675 (update):apps/web/app/organization/page.tsx
                             >
                                 <CardHeader className="pb-4">
                                     <div className="flex justify-between items-start mb-4">
@@ -248,21 +244,12 @@ export default function CompetitionListPage() {
                                             {comp.prize}
                                         </span>
                                     </div>
-<<<<<<< HEAD:apps/web/app/(organization)/organization/page.tsx
                                     <div className="w-full rounded-lg p-2.5 bg-white flex items-center justify-between">
                                         <Button
                                             variant="link"
                                             className="w-full px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex flex-row items-center justify-between h-auto"
                                         >
                                             <span>View Competition Detail</span>
-=======
-                                    <div className="w-full border border-slate-200 rounded-lg p-2.5 bg-white flex items-center justify-between">
-                                        <Button
-                                            variant="link"
-                                            className="px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex items-center gap-1 h-auto"
-                                        >
-                                            View Competition Detail
->>>>>>> 3999675 (update):apps/web/app/organization/page.tsx
                                             <ArrowRight className="h-4 w-4" />
                                         </Button>
                                     </div>
