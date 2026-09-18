@@ -29,7 +29,7 @@ export default function TeamDetail() {
                     <div className="flex items-center text-sm text-slate-500 mb-2">
                         <span>Dashboard</span>
                         <ChevronRight className="w-4 h-4 mx-1" />
-                        <span className="text-blue-600 font-medium">Competition Detail</span>
+                        <span>Competition Detail</span>
                         <ChevronRight className="w-4 h-4 mx-1" />
                         <span className="text-blue-600 font-medium">Team Detail</span>
                     </div>
