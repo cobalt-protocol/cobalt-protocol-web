@@ -5,6 +5,7 @@ import Image from "next/image"
 import { Button } from "@workspace/ui/components/button"
 import { routes } from "@/lib/routes"
 import { useSiteActions } from "./site-actions"
+import { AccountMenu } from "./account-menu"
 export function Brand() {
   return (
     <Link
@@ -23,7 +24,7 @@ export function Brand() {
   )
 }
 export function SiteHeader() {
-  const { openWallet } = useSiteActions()
+  const { openWallet, connected, disconnectWallet } = useSiteActions()
   return (
     <header className="border-b border-border/30 bg-white">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-5 md:px-10">
@@ -32,16 +33,23 @@ export function SiteHeader() {
           aria-label="Main navigation"
           className="flex items-center gap-3 sm:gap-5"
         >
-          <Button className="h-9 px-3 text-xs sm:text-sm" onClick={openWallet}>
-            Connect Wallet
-          </Button>
-          <Link
-            href={routes.profile}
-            aria-label="Your profile"
-            className="rounded-full bg-blue-50 p-2 text-primary"
+          <Button
+            className="h-9 px-3 text-xs sm:text-sm"
+            onClick={connected ? disconnectWallet : openWallet}
           >
-            <UserRound size={18} />
-          </Link>
+            {connected ? "Disconnect Wallet" : "Connect Wallet"}
+          </Button>
+          {connected ? (
+            <AccountMenu />
+          ) : (
+            <Link
+              href={routes.profile}
+              aria-label="Your profile"
+              className="rounded-full bg-blue-50 p-2 text-primary"
+            >
+              <UserRound size={18} />
+            </Link>
+          )}
         </nav>
       </div>
     </header>
