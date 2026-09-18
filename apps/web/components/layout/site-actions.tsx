@@ -1,19 +1,44 @@
 "use client"
 import { createContext, useContext, useState, type ReactNode } from "react"
-import {
-  ChevronRight,
-  Download,
-  ExternalLink,
-  ShieldCheck,
-  TriangleAlert,
-  Wallet,
-} from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { Modal } from "@/components/ui/modal"
-import { primaryLinkClass } from "@/components/ui/page-primitives"
+import { WalletOnboardingDialog } from "@/features/registration/components/wallet-onboarding-dialog"
+import { useRouter } from "next/navigation"
+import { useBrowserDraft } from "@/lib/browser-draft"
+import { routes } from "@/lib/routes"
+import {
+  isBuilderProfile,
+  mockProfile,
+  profileStorageKey,
+} from "@/features/profile/data/profile"
+import type { BuilderProfile } from "@/features/profile/types"
+import { useMemberships } from "@/features/registration/hooks/use-memberships"
+import {
+  isProfileComplete,
+  validateCreateTeam,
+} from "@/features/registration/lib/registration-validation"
+import { RegistrationDialogs } from "@/features/registration/components/registration-dialogs"
+import { getRegistrationStep } from "@/features/registration/lib/registration-step"
+import type {
+  CreateTeamInput,
+  PreviewMembership,
+  RegistrationCompetition,
+  RegistrationDialog,
+} from "@/features/registration/types"
+const isBoolean = (value: unknown): value is boolean =>
+  typeof value === "boolean"
+const isOptionalProfile = (value: unknown): value is BuilderProfile | null =>
+  value === null || isBuilderProfile(value)
 interface SiteActions {
+  joinTeam: (membership: PreviewMembership) => string | null
   openWallet: () => void
   showNotice: (message: string) => void
+  connected: boolean
+  disconnectWallet: () => void
+  register: (
+    competition: RegistrationCompetition,
+    profileOverride?: BuilderProfile
+  ) => void
 }
 const SiteActionsContext = createContext<SiteActions | null>(null)
 export function useSiteActions(): SiteActions {
@@ -23,93 +48,145 @@ export function useSiteActions(): SiteActions {
   return context
 }
 export function SiteActionsProvider({ children }: { children: ReactNode }) {
-  const [walletOpen, setWalletOpen] = useState(false)
+  const router = useRouter()
+  const { value: storedConnected, save: saveConnected } = useBrowserDraft(
+    "cobalt:wallet-preview:v1",
+    false,
+    isBoolean
+  )
+  const [sessionConnected, setSessionConnected] = useState<boolean | null>(null)
+  const connected = sessionConnected ?? storedConnected
+  const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
+    profileStorageKey,
+    null,
+    isOptionalProfile
+  )
+  const profile = savedProfile ?? mockProfile
+  const { memberships, addMembership } = useMemberships()
+  const [dialog, setDialog] = useState<RegistrationDialog>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const walletOpen = dialog?.kind === "wallet"
+  function setWalletOpen(open: boolean) {
+    setDialog((current) =>
+      open
+        ? { kind: "wallet", competition: null }
+        : current?.kind === "wallet"
+          ? null
+          : current
+    )
+  }
+  function navigate(href: string) {
+    setDialog(null)
+    router.push(href)
+  }
+  function disconnectWallet() {
+    setSessionConnected(saveConnected(false) ? null : false)
+    setDialog(null)
+    setNotice(null)
+  }
+  function register(
+    competition: RegistrationCompetition,
+    profileOverride?: BuilderProfile
+  ) {
+    continueRegistration(
+      competition,
+      connected,
+      profileOverride ?? savedProfile
+    )
+  }
+  function continueRegistration(
+    competition: RegistrationCompetition,
+    walletConnected: boolean,
+    currentProfile: BuilderProfile | null
+  ) {
+    const membership = memberships.find(
+      (item) => item.competitionSlug === competition.slug
+    )
+    const step = getRegistrationStep(
+      walletConnected,
+      currentProfile,
+      membership
+    )
+    if (step === "workspace" || step === "dashboard") {
+      navigate(
+        step === "workspace"
+          ? routes.workspace(competition.slug)
+          : routes.dashboard
+      )
+    } else setDialog({ kind: step, competition })
+  }
+  function connectPreview() {
+    setSessionConnected(saveConnected(true) ? null : true)
+    const competition = dialog?.competition ?? null
+    if (!isProfileComplete(savedProfile)) {
+      setDialog({ kind: "profile", competition })
+      return
+    }
+    if (!competition) {
+      setDialog(null)
+      return
+    }
+    continueRegistration(competition, true, savedProfile)
+  }
+  function joinTeam(membership: PreviewMembership): string | null {
+    if (!connected || !isProfileComplete(savedProfile))
+      return "Connect your wallet and complete your profile first."
+    if (!addMembership(membership))
+      return "Could not save this team. You may already have a team here, or browser storage is unavailable."
+    navigate(
+      membership.status === "active"
+        ? routes.workspace(membership.competitionSlug)
+        : routes.dashboard
+    )
+    return null
+  }
+  function createTeam(input: CreateTeamInput): string | null {
+    const error = validateCreateTeam(input)
+    if (error) return error
+    if (dialog?.kind !== "create") return "Reopen the team form to continue."
+    const id = crypto.randomUUID()
+    return joinTeam({
+      competitionSlug: dialog.competition.slug,
+      teamId: id,
+      teamName: input.name.trim(),
+      visibility: input.visibility,
+      requirements: input.requirements.trim(),
+      ownerUsername: profile.username,
+      role: "lead",
+      status: "active",
+      inviteCode:
+        input.visibility === "private"
+          ? `COBALT-${id.slice(0, 8).toUpperCase()}`
+          : null,
+    })
+  }
   return (
     <SiteActionsContext.Provider
-      value={{ openWallet: () => setWalletOpen(true), showNotice: setNotice }}
+      value={{
+        openWallet: () => {
+          if (!connected) setWalletOpen(true)
+          else setNotice("Your wallet is connected in preview mode.")
+        },
+        showNotice: setNotice,
+        connected,
+        disconnectWallet,
+        register,
+        joinTeam,
+      }}
     >
       {children}
-      <Modal
+      <WalletOnboardingDialog
         open={walletOpen}
         onOpenChange={setWalletOpen}
-        title="Create Your Wallet First"
-      >
-        <span className="mt-4 inline-flex rounded-xl border border-blue-100 bg-blue-50 p-3 text-primary">
-          <Wallet size={21} />
-        </span>
-        <p className="mt-4 text-sm leading-7 text-muted-foreground">
-          To join competitions and receive rewards, you need a crypto wallet.
-          Create a wallet with MetaMask, then come back here to connect it.
-        </p>
-        <div className="mt-5 space-y-3">
-          {[
-            {
-              title: "Install MetaMask",
-              description:
-                "Download and install the MetaMask browser extension or app.",
-              icon: Download,
-            },
-            {
-              title: "Create Your Wallet",
-              description:
-                "Follow MetaMask’s steps to generate, backup, and secure your wallet.",
-              icon: ShieldCheck,
-            },
-            {
-              title: "Return to Cobalt Protocol",
-              description:
-                "Come back to this website and click ‘Connect Wallet’ again to proceed.",
-              icon: ChevronRight,
-            },
-          ].map(({ title, description, icon: Icon }, index) => (
-            <div
-              key={title}
-              className="flex gap-3 rounded-xl border border-border bg-slate-50 p-4"
-            >
-              <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-xs font-bold text-primary">
-                0{index + 1}
-              </span>
-              <div>
-                <h3 className="text-sm font-bold">{title}</h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {description}
-                </p>
-              </div>
-              <Icon className="ml-auto shrink-0 text-slate-400" size={16} />
-            </div>
-          ))}
-        </div>
-        <div className="mt-5 flex gap-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-900">
-          <TriangleAlert className="shrink-0" size={18} />
-          <p>
-            <strong>Security Notice:</strong> Never share your Secret Recovery
-            Phrase with anyone. Cobalt Protocol will never ask for it.
-          </p>
-        </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2">
-          <a
-            href="https://metamask.io/download/"
-            target="_blank"
-            rel="noopener noreferrer"
-            className={primaryLinkClass}
-          >
-            Get MetaMask <ExternalLink size={15} />
-          </a>
-          <Button
-            variant="outline"
-            className="h-11"
-            onClick={() => {
-              setWalletOpen(false)
-              setNotice(
-                "Wallet connection will be available after integration. You can explore the competition and profile previews now."
-              )
-            }}
-          >
-            I’ve Created My Wallet
-          </Button>
-        </div>
-      </Modal>
+        onConnect={connectPreview}
+      />
+      <RegistrationDialogs
+        dialog={dialog}
+        profile={profile}
+        onChange={setDialog}
+        onNavigate={navigate}
+        onCreate={createTeam}
+      />
       <Modal
         open={notice !== null}
         onOpenChange={(open) => {

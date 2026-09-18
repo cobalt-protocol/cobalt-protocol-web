@@ -1,7 +1,6 @@
-import { mockCompetitions } from "./competitions"
 import type { Competition } from "../types"
+import { mockCompetitions } from "./competitions"
 
-// Replace this read boundary with API calls when the backend is available.
 export function getCompetitions(): readonly Competition[] {
   return mockCompetitions
 }
