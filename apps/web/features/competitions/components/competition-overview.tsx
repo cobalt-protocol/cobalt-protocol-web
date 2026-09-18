@@ -52,7 +52,7 @@ export function CompetitionOverview({
           </div>
         ) : (
           <>
-            <CompetitionActions />
+            <CompetitionActions competition={competition} />
             <p className="mt-4 text-xs text-muted-foreground">
               ● {formatNumber(competition.participants)} participants ·{" "}
               {competition.teamCount} teams
