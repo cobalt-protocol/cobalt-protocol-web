@@ -1,6 +1,5 @@
 import type { Competition } from "../types"
 
-// Fixed reference date keeps the supplied 2025 designs deterministic during layout work.
 export const competitionPreviewDate = "2025-04-04T00:00:00Z"
 const baseCompetition: Competition = {
   id: "agents",
