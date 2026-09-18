@@ -11,8 +11,17 @@ import {
 import { Modal } from "@/components/ui/modal"
 import { mockTeam } from "../data/workspace"
 import { teamReducer } from "../lib/team-reducer"
-export function TeamManagement({ capacity }: { capacity: number }) {
-  const [team, dispatch] = useReducer(teamReducer, mockTeam)
+import type { TeamState } from "../types"
+export function TeamManagement({
+  capacity,
+  initialTeam = mockTeam,
+  onRename,
+}: {
+  capacity: number
+  initialTeam?: TeamState
+  onRename?: (name: string) => boolean
+}) {
+  const [team, dispatch] = useReducer(teamReducer, initialTeam)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(team.name)
   const [removing, setRemoving] = useState<string | null>(null)
@@ -182,6 +191,12 @@ export function TeamManagement({ capacity }: { capacity: number }) {
           onSubmit={(event) => {
             event.preventDefault()
             if (!name.trim()) return
+            if (onRename && !onRename(name)) {
+              setFeedback(
+                "Could not save the team name. Use up to 24 characters and check browser storage."
+              )
+              return
+            }
             dispatch({ type: "rename", name })
             setEditing(false)
           }}

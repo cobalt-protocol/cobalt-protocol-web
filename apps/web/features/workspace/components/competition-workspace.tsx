@@ -4,7 +4,7 @@ import { CompetitionTimeline } from "@/features/competitions/components/competit
 import type { Competition } from "@/features/competitions/types"
 import { routes } from "@/lib/routes"
 import { SubmissionForm } from "./submission-form"
-import { TeamManagement } from "./team-management"
+import { RegisteredTeam } from "./registered-team"
 import { WorkspaceAnnouncements } from "./workspace-announcements"
 
 export function CompetitionWorkspace({
@@ -32,7 +32,10 @@ export function CompetitionWorkspace({
       <div className="space-y-5">
         <CompetitionOverview competition={competition} workspace />
         <CompetitionTimeline stages={competition.timeline} />
-        <TeamManagement capacity={competition.maxTeamSize} />
+        <RegisteredTeam
+          competitionSlug={competition.slug}
+          capacity={competition.maxTeamSize}
+        />
         <SubmissionForm competitionId={competition.id} />
         <WorkspaceAnnouncements />
       </div>
