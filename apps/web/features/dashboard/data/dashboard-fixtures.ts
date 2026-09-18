@@ -1,7 +1,5 @@
 import type { DashboardCompetition, DashboardProfile } from "../types"
 
-// Screenshot fixtures: amounts are displayed USD values, followed by the supplied token label.
-// These are layout examples, not wallet balances or live award entitlements.
 export const dashboardProfile: DashboardProfile = {
   name: "Alex Rivera",
   username: "alexrivera_ai",
