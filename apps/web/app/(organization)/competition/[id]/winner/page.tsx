@@ -1,4 +1,5 @@
 import React from 'react';
+import { ChevronRight } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
 const ChevronDownIcon = () => (
@@ -38,20 +39,20 @@ export default function DetermineWinner() {
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
 
                 {/* Bagian Header Atas */}
-            <div className="mb-8">
-                <div className="flex items-center text-xs font-medium text-gray-500 mb-4 space-x-2">
-                    <span>Dashboard</span>
-                    <span>/</span>
-                    <span>Competition Detail</span>
-                    <span>/</span>
-                    <span className="text-blue-600 font-semibold">Determine Winner</span>
-                </div>
+                <div className="mb-8">
+                    <div className="flex items-center text-sm text-slate-500 mb-2">
+                        <span>Dashboard</span>
+                        <ChevronRight className="w-4 h-4 mx-1" />
+                        <span>Competition Detail</span>
+                        <ChevronRight className="w-4 h-4 mx-1" />
+                        <span className="text-blue-600 font-medium">Determine Winner</span>
+                    </div>
 
-                <h1 className="text-3xl font-bold text-slate-900 mb-2">Determine Winner</h1>
-                <p className="text-slate-500 text-sm">
-                    Assign winning categories to participating teams and finalize the competition results.
-                </p>
-            </div>
+                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Determine Winner</h1>
+                    <p className="text-slate-500 mt-1 text-sm">
+                        Assign winning categories to participating teams and finalize the competition results.
+                    </p>
+                </div>
 
             {/* Grid Layout Utama */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
