@@ -87,7 +87,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleOpenWallet() {
-    if (connected) {
+    if (isWagmiConnected) {
       if (isWrongNetwork) {
         try {
           await switchChainAsync({ chainId: botChainTestnet.id })
@@ -110,11 +110,15 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true)
 
     try {
+      await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+
       const injectedConnector = connectors.find((c) => c.id === "injected") || connectors[0]
       if (injectedConnector) {
-        await connectAsync({ connector: injectedConnector })
-      } else {
-        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+        try {
+          await connectAsync({ connector: injectedConnector })
+        } catch (wagmiErr) {
+          console.log("Wagmi sync status:", wagmiErr)
+        }
       }
 
       try {

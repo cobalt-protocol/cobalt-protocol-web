@@ -3,7 +3,7 @@ import { injected } from "wagmi/connectors"
 import { defineChain } from "viem"
 
 export const botChainTestnet = defineChain({
-  id: 84421,
+  id: 968,
   name: "BotChain Testnet",
   nativeCurrency: {
     name: "BotChain Token",
@@ -12,13 +12,13 @@ export const botChainTestnet = defineChain({
   },
   rpcUrls: {
     default: {
-      http: ["https://testnet-rpc.botchain.ai"],
+      http: ["https://rpc.bohr.life"],
     },
   },
   blockExplorers: {
     default: {
       name: "BotChain Explorer",
-      url: "https://testnet-explorer.botchain.ai",
+      url: "https://scan.bohr.life/",
     },
   },
   testnet: true,
