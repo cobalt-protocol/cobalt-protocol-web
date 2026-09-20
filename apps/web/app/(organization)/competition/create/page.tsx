@@ -25,6 +25,12 @@ const ChevronDownIcon = () => (
 const UploadIcon = () => (
     <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path></svg>
 );
+const PlusIcon = () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+);
+const TrashIcon = () => (
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+);
 
 // --- KOMPONEN WRAPPER SECTION ---
 interface SectionCardProps {
@@ -167,7 +173,13 @@ const DateCard = ({ title, startLabel, startDate, endLabel, endDate, icon }: Dat
     </div>
 );
 
-const INITIAL_PRIZES = [
+interface PrizeCategory {
+    place: string;
+    amount: string;
+    file: string;
+}
+
+const INITIAL_PRIZES: PrizeCategory[] = [
     { place: '1st Place Champion', amount: '35,000', file: 'Upload1.pdf' },
     { place: '2nd Place', amount: '20,000', file: 'Upload2.pdf' },
     { place: '3rd Place', amount: '10,000', file: 'Upload3.pdf' },
@@ -175,8 +187,14 @@ const INITIAL_PRIZES = [
 
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
-    const [prizes, setPrizes] = useState(INITIAL_PRIZES);
+    const [prizes, setPrizes] = useState<PrizeCategory[]>(INITIAL_PRIZES);
     const [participantCertificate, setParticipantCertificate] = useState('Upload4.pdf');
+
+    const handlePrizeChange = (index: number, field: keyof PrizeCategory, value: string) => {
+        setPrizes((prev) =>
+            prev.map((item, i) => (i === index ? { ...item, [field]: value } : item))
+        );
+    };
 
     const handleCertificateChange = (index: number, file: File | null) => {
         setPrizes((prev) =>
@@ -185,6 +203,25 @@ export default function CreateCompetition() {
             )
         );
     };
+
+    const handleAddPrize = () => {
+        const nextNum = prizes.length + 1;
+        const ordinal = nextNum === 4 ? '4th' : nextNum === 5 ? '5th' : `${nextNum}th`;
+        setPrizes((prev) => [
+            ...prev,
+            { place: `${ordinal} Place`, amount: '0', file: '' },
+        ]);
+    };
+
+    const handleRemovePrize = (index: number) => {
+        if (prizes.length <= 1) return;
+        setPrizes((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const totalPrizeAmount = prizes.reduce((acc, p) => {
+        const parsed = parseFloat(p.amount.replace(/,/g, ''));
+        return acc + (isNaN(parsed) ? 0 : parsed);
+    }, 0);
     return (
         <div className="w-full bg-[#F8F9FF] py-10 font-sans text-slate-800">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
@@ -274,28 +311,59 @@ export default function CreateCompetition() {
                 >
                     <div className="space-y-3">
                         {prizes.map((prize, index) => (
-                            <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
-                                <div className="md:col-span-4">
+                            <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                                <div className={prizes.length > 1 ? "md:col-span-4" : "md:col-span-4"}>
                                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Category Name</label>
-                                    <input type="text" className="w-full bg-transparent text-slate-700 py-2 px-3 rounded-md text-sm" defaultValue={prize.place} readOnly />
+                                    <input
+                                        type="text"
+                                        className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                                        value={prize.place}
+                                        onChange={(e) => handlePrizeChange(index, 'place', e.target.value)}
+                                    />
                                 </div>
                                 <div className="md:col-span-4 relative">
                                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Amount</label>
                                     <div className="relative">
                                         <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-sm">$</span>
-                                        <input type="text" className="w-full bg-transparent text-slate-700 py-2 pl-7 pr-12 rounded-md text-sm" defaultValue={prize.amount} readOnly />
-                                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs">USDC</span>
+                                        <input
+                                            type="text"
+                                            className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 pl-7 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                                            value={prize.amount}
+                                            onChange={(e) => handlePrizeChange(index, 'amount', e.target.value)}
+                                        />
+                                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs font-semibold">USDC</span>
                                     </div>
                                 </div>
-                                <div className="md:col-span-4">
+                                <div className={prizes.length > 1 ? "md:col-span-3" : "md:col-span-4"}>
                                     <CertificateFileInput
                                         fileName={prize.file}
                                         onFileChange={(file) => handleCertificateChange(index, file)}
                                     />
                                 </div>
+                                {prizes.length > 1 && (
+                                    <div className="md:col-span-1 flex justify-end items-center pt-2 md:pt-4">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleRemovePrize(index)}
+                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
+                                            title="Remove Prize Category"
+                                        >
+                                            <TrashIcon />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>
+
+                    <button
+                        type="button"
+                        onClick={handleAddPrize}
+                        className="flex items-center space-x-2 text-xs font-semibold text-blue-600 hover:text-blue-700 bg-blue-50/60 hover:bg-blue-50 border border-blue-200 px-4 py-2.5 rounded-lg transition-colors mt-4"
+                    >
+                        <PlusIcon />
+                        <span>Add Prize Category</span>
+                    </button>
 
                     {/* PARTICIPANT CERTIFICATE (SEPARATE INPUT) */}
                     <div className="mt-6 pt-5 border-t border-slate-200/80">
@@ -361,10 +429,10 @@ export default function CreateCompetition() {
                         <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-center">
                             <p className="text-xs font-semibold text-slate-500 mb-1">Total Prize Amount</p>
                             <div className="flex items-end space-x-1 mb-2">
-                                <span className="text-2xl font-bold text-slate-800">$75,000</span>
+                                <span className="text-2xl font-bold text-slate-800">${totalPrizeAmount.toLocaleString()}</span>
                                 <span className="text-xs font-semibold text-slate-500 mb-1">USDC</span>
                             </div>
-                            <p className="text-[10px] text-slate-400">Calculated across 3 prize pools</p>
+                            <p className="text-[10px] text-slate-400">Calculated across {prizes.length} prize {prizes.length === 1 ? 'pool' : 'pools'}</p>
                         </div>
 
                         {/* Wallet Info */}
