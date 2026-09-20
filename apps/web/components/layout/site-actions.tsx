@@ -3,7 +3,6 @@ import { createContext, useContext, useState, type ReactNode } from "react"
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
 import { Button } from "@workspace/ui/components/button"
 import { Modal } from "@/components/ui/modal"
-import { WalletOnboardingDialog } from "@/features/registration/components/wallet-onboarding-dialog"
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
@@ -80,20 +79,12 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const { memberships, addMembership } = useMemberships()
   const [dialog, setDialog] = useState<RegistrationDialog>(null)
   const [notice, setNotice] = useState<string | null>(null)
-  const walletOpen = dialog?.kind === "wallet"
-  function setWalletOpen(open: boolean) {
-    setDialog((current) =>
-      open
-        ? { kind: "wallet", competition: null }
-        : current?.kind === "wallet"
-          ? null
-          : current
-    )
-  }
+
   function navigate(href: string) {
     setDialog(null)
     router.push(href)
   }
+
   async function handleOpenWallet() {
     if (connected) {
       if (isWrongNetwork) {
@@ -113,38 +104,37 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       connectors.find((c) => c.id === "injected") ||
       connectors[0]
 
-    if (typeof window !== "undefined" && (window as any).ethereum) {
-      try {
-        if (metaMaskConnector) {
-          await connectAsync({ connector: metaMaskConnector })
-        } else {
-          await (window as any).ethereum.request({ method: "eth_requestAccounts" })
-        }
-
-        try {
-          await switchChainAsync({ chainId: botChainTestnet.id })
-        } catch {
-          await addBotChainTestnetToWallet()
-        }
-
-        const competition = dialog?.competition ?? null
-        if (!isProfileComplete(savedProfile)) {
-          setDialog({ kind: "profile", competition })
-        } else if (competition) {
-          continueRegistration(competition, true, savedProfile)
-        } else {
-          setDialog(null)
-        }
+    try {
+      if (metaMaskConnector) {
+        await connectAsync({ connector: metaMaskConnector })
+      } else if (typeof window !== "undefined" && (window as any).ethereum) {
+        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+      } else {
+        setNotice("MetaMask wallet extension is not detected. Please install MetaMask in your browser.")
         return
-      } catch (err: any) {
-        console.error("MetaMask connection error:", err)
-        if (err?.code === 4001 || err?.message?.includes("user rejected")) {
-          return
-        }
       }
-    }
 
-    setWalletOpen(true)
+      try {
+        await switchChainAsync({ chainId: botChainTestnet.id })
+      } catch {
+        await addBotChainTestnetToWallet()
+      }
+
+      const competition = dialog?.competition ?? null
+      if (!isProfileComplete(savedProfile)) {
+        setDialog({ kind: "profile", competition })
+      } else if (competition) {
+        continueRegistration(competition, true, savedProfile)
+      } else {
+        setDialog(null)
+      }
+    } catch (err: any) {
+      console.error("MetaMask connection error:", err)
+      if (err?.code === 4001 || err?.message?.includes("user rejected")) {
+        return
+      }
+      setNotice(err?.message || "Could not connect to MetaMask.")
+    }
   }
 
   async function handleDisconnectWallet() {
@@ -193,6 +183,10 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       currentProfile,
       membership
     )
+    if (step === "wallet") {
+      handleOpenWallet()
+      return
+    }
     if (step === "workspace" || step === "dashboard") {
       navigate(
         step === "workspace"
@@ -200,19 +194,6 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           : routes.dashboard
       )
     } else setDialog({ kind: step, competition })
-  }
-  function connectPreview() {
-    setSessionConnected(saveConnected(true) ? null : true)
-    const competition = dialog?.competition ?? null
-    if (!isProfileComplete(savedProfile)) {
-      setDialog({ kind: "profile", competition })
-      return
-    }
-    if (!competition) {
-      setDialog(null)
-      return
-    }
-    continueRegistration(competition, true, savedProfile)
   }
   function joinTeam(membership: PreviewMembership): string | null {
     if (!connected || !isProfileComplete(savedProfile))
@@ -262,11 +243,6 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       }}
     >
       {children}
-      <WalletOnboardingDialog
-        open={walletOpen}
-        onOpenChange={setWalletOpen}
-        onConnect={connectPreview}
-      />
       <RegistrationDialogs
         dialog={dialog}
         profile={profile}
