@@ -1,4 +1,6 @@
-import React from 'react';
+'use client';
+
+import React, { useState, useRef } from 'react';
 import { ChevronRight } from 'lucide-react';
 
 // --- KUMPULAN IKON SVG ---
@@ -60,6 +62,75 @@ const SectionCard = ({ icon, title, description, step, children }: SectionCardPr
     </div>
 );
 
+// --- KOMPONEN KECIL UNTUK CERTIFICATE FILE INPUT ---
+interface CertificateFileInputProps {
+    fileName: string;
+    onFileChange: (file: File | null) => void;
+}
+
+const CertificateFileInput = ({ fileName, onFileChange }: CertificateFileInputProps) => {
+    const inputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        if (file) {
+            onFileChange(file);
+        }
+    };
+
+    const handleRemove = (e: React.MouseEvent) => {
+        e.stopPropagation();
+        onFileChange(null);
+        if (inputRef.current) {
+            inputRef.current.value = '';
+        }
+    };
+
+    return (
+        <div>
+            <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
+                Certificate Template
+            </label>
+            <input
+                type="file"
+                ref={inputRef}
+                onChange={handleFileSelect}
+                accept=".pdf,.png,.jpg,.jpeg"
+                className="hidden"
+            />
+            {fileName ? (
+                <div
+                    onClick={() => inputRef.current?.click()}
+                    className="flex items-center justify-between bg-white/70 hover:bg-white cursor-pointer py-2 px-3 rounded-md text-sm text-blue-600 border border-slate-200/80 transition-colors"
+                >
+                    <div className="flex items-center space-x-2 truncate">
+                        <UploadIcon />
+                        <span className="text-xs font-medium truncate">{fileName}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleRemove}
+                        className="text-gray-400 hover:text-red-500 font-bold ml-2 transition-colors focus:outline-none"
+                        title="Remove template"
+                    >
+                        ×
+                    </button>
+                </div>
+            ) : (
+                <div
+                    onClick={() => inputRef.current?.click()}
+                    className="flex items-center justify-between bg-white/50 hover:bg-white cursor-pointer py-2 px-3 rounded-md text-sm text-slate-400 hover:text-blue-600 transition-colors border border-dashed border-slate-300"
+                >
+                    <div className="flex items-center space-x-2">
+                        <UploadIcon />
+                        <span className="text-xs font-medium">Upload File</span>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
 // --- KOMPONEN KECIL UNTUK DATE CARD ---
 interface DateCardProps {
     title: string;
@@ -89,8 +160,24 @@ const DateCard = ({ title, startLabel, startDate, endLabel, endDate, icon }: Dat
     </div>
 );
 
+const INITIAL_PRIZES = [
+    { place: '1st Place Champion', amount: '35,000', file: 'Upload1.pdf' },
+    { place: '2nd Place', amount: '20,000', file: 'Upload2.pdf' },
+    { place: '3rd Place', amount: '10,000', file: 'Upload3.pdf' },
+    { place: 'Participant', amount: '0', file: 'Upload4.pdf' },
+];
+
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
+    const [prizes, setPrizes] = useState(INITIAL_PRIZES);
+
+    const handleCertificateChange = (index: number, file: File | null) => {
+        setPrizes((prev) =>
+            prev.map((item, i) =>
+                i === index ? { ...item, file: file ? file.name : '' } : item
+            )
+        );
+    };
     return (
         <div className="w-full bg-[#F8F9FF] py-10 font-sans text-slate-800">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
@@ -179,12 +266,7 @@ export default function CreateCompetition() {
                     step="STEP 04/06"
                 >
                     <div className="space-y-3">
-                        {[
-                            { place: '1st Place Champion', amount: '35,000', file: 'Upload1.pdf' },
-                            { place: '2nd Place', amount: '20,000', file: 'Upload2.pdf' },
-                            { place: '3rd Place', amount: '10,000', file: 'Upload3.pdf' },
-                            { place: 'Participant', amount: '0', file: 'Upload4.pdf' },
-                        ].map((prize, index) => (
+                        {prizes.map((prize, index) => (
                             <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                                 <div className="md:col-span-4">
                                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Category Name</label>
@@ -199,14 +281,10 @@ export default function CreateCompetition() {
                                     </div>
                                 </div>
                                 <div className="md:col-span-4">
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Certificate Template</label>
-                                    <div className="flex items-center justify-between bg-transparent py-2 px-3 rounded-md text-sm text-blue-600">
-                                        <div className="flex items-center space-x-2">
-                                            <UploadIcon />
-                                            <span className="text-xs font-medium">{prize.file}</span>
-                                        </div>
-                                        <button className="text-gray-400 hover:text-red-500">×</button>
-                                    </div>
+                                    <CertificateFileInput
+                                        fileName={prize.file}
+                                        onFileChange={(file) => handleCertificateChange(index, file)}
+                                    />
                                 </div>
                             </div>
                         ))}
