@@ -1,6 +1,7 @@
 "use client"
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
+import { useAccount, useBalance, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
+import { formatUnits } from "viem"
 import { useModal } from "connectkit"
 import { Button } from "@workspace/ui/components/button"
 import { Modal } from "@/components/ui/modal"
@@ -37,6 +38,7 @@ interface SiteActions {
   showNotice: (message: string) => void
   connected: boolean
   address?: string
+  balance?: string
   chainName?: string
   isWrongNetwork?: boolean
   switchNetwork?: () => void
@@ -80,6 +82,19 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const connected = !userDisconnected && (isWagmiConnected || Boolean(directAddress) || Boolean(sessionConnected ?? storedConnected))
   const effectiveAddress = !userDisconnected ? (address ? String(address) : directAddress ?? undefined) : undefined
   const isWrongNetwork = Boolean(!userDisconnected && isWagmiConnected && chainId !== botChainTestnet.id)
+
+  const { data: balanceData } = useBalance({
+    address:
+      effectiveAddress && effectiveAddress.startsWith("0x")
+        ? (effectiveAddress as `0x${string}`)
+        : undefined,
+  })
+
+  const balance = connected
+    ? balanceData
+      ? `${formatUnits(balanceData.value, balanceData.decimals)} ${balanceData.symbol}`
+      : `0.00 ${chain?.nativeCurrency?.symbol || "BOT"}`
+    : "Not connected"
 
   useEffect(() => {
     if (typeof window === "undefined" || !(window as any).ethereum) return
@@ -278,6 +293,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         showNotice: setNotice,
         connected,
         address: effectiveAddress,
+        balance,
         chainName: chain?.name,
         isWrongNetwork,
         switchNetwork: handleSwitchNetwork,

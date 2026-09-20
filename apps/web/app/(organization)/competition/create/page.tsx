@@ -110,10 +110,6 @@ export default function CreateCompetition() {
                                 Create and publish a competition by providing the required competition information, prize details, guidebook, and payment.
                             </p>
                         </div>
-                        <div className="bg-blue-50 text-blue-700 text-xs font-bold px-3 py-1.5 rounded-md flex items-center">
-                            <span className="w-2 h-2 bg-blue-500 rounded-full mr-2"></span>
-                            Draft #CP-4091
-                        </div>
                     </div>
                 </div>
 

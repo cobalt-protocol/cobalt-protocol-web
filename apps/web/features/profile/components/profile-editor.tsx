@@ -39,10 +39,8 @@ export function ProfileEditor({
   const [skillName, setSkillName] = useState("")
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
-  const { openWallet, connected, disconnectWallet, address, chainName } =
+  const { openWallet, connected, disconnectWallet, address, balance, chainName } =
     useSiteActions()
-  const isTestnet = chainName ? chainName.toLowerCase().includes("testnet") : true
-  const networkType = isTestnet ? "Testnet" : "Mainnet"
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = {
@@ -136,20 +134,22 @@ export function ProfileEditor({
               Web3 Wallet
             </h2>
             <Badge tone={connected ? "green" : "neutral"}>
-              {connected ? `Connected · ${networkType}` : "Not connected"}
+              {connected
+                ? `Connected · ${chainName || "BotChain Testnet"}`
+                : "Not connected"}
             </Badge>
           </div>
           <div className="my-5 rounded-xl bg-secondary/60 p-4 space-y-3">
             <div>
-              <p className="text-xs text-muted-foreground font-medium">Network Name</p>
-              <p className="mt-0.5 text-sm font-bold">
-                {connected ? (chainName || "BotChain Testnet") : "Not connected"}
-              </p>
-            </div>
-            <div>
               <p className="text-xs text-muted-foreground font-medium">Wallet Address</p>
               <p className="mt-0.5 text-sm font-bold font-mono" title={address}>
                 {connected ? formatAddress(address) : "Not connected"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Wallet Balance</p>
+              <p className="mt-0.5 text-sm font-bold font-mono">
+                {connected ? (balance || "0.00 BOT") : "Not connected"}
               </p>
             </div>
           </div>
