@@ -66,9 +66,16 @@ const SectionCard = ({ icon, title, description, step, children }: SectionCardPr
 interface CertificateFileInputProps {
     fileName: string;
     onFileChange: (file: File | null) => void;
+    label?: string;
+    accept?: string;
 }
 
-const CertificateFileInput = ({ fileName, onFileChange }: CertificateFileInputProps) => {
+const CertificateFileInput = ({
+    fileName,
+    onFileChange,
+    label = "Certificate Template",
+    accept = ".pdf,.png,.jpg,.jpeg",
+}: CertificateFileInputProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -89,13 +96,13 @@ const CertificateFileInput = ({ fileName, onFileChange }: CertificateFileInputPr
     return (
         <div>
             <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">
-                Certificate Template
+                {label}
             </label>
             <input
                 type="file"
                 ref={inputRef}
                 onChange={handleFileSelect}
-                accept=".pdf,.png,.jpg,.jpeg"
+                accept={accept}
                 className="hidden"
             />
             {fileName ? (
@@ -164,12 +171,12 @@ const INITIAL_PRIZES = [
     { place: '1st Place Champion', amount: '35,000', file: 'Upload1.pdf' },
     { place: '2nd Place', amount: '20,000', file: 'Upload2.pdf' },
     { place: '3rd Place', amount: '10,000', file: 'Upload3.pdf' },
-    { place: 'Participant', amount: '0', file: 'Upload4.pdf' },
 ];
 
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
     const [prizes, setPrizes] = useState(INITIAL_PRIZES);
+    const [participantCertificate, setParticipantCertificate] = useState('Upload4.pdf');
 
     const handleCertificateChange = (index: number, file: File | null) => {
         setPrizes((prev) =>
@@ -289,6 +296,24 @@ export default function CreateCompetition() {
                             </div>
                         ))}
                     </div>
+
+                    {/* PARTICIPANT CERTIFICATE (SEPARATE INPUT) */}
+                    <div className="mt-6 pt-5 border-t border-slate-200/80">
+                        <div className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
+                            <div className="md:col-span-8">
+                                <h4 className="text-sm font-bold text-slate-800">Participant Certificate</h4>
+                                <p className="text-xs text-slate-500 mt-0.5">Upload an image certificate awarded to all registered participants.</p>
+                            </div>
+                            <div className="md:col-span-4">
+                                <CertificateFileInput
+                                    fileName={participantCertificate}
+                                    onFileChange={(file) => setParticipantCertificate(file ? file.name : '')}
+                                    label="Participant Certificate Image"
+                                    accept="image/*"
+                                />
+                            </div>
+                        </div>
+                    </div>
                 </SectionCard>
 
                 {/* SECTION 5: GUIDEBOOK */}
@@ -339,7 +364,7 @@ export default function CreateCompetition() {
                                 <span className="text-2xl font-bold text-slate-800">$75,000</span>
                                 <span className="text-xs font-semibold text-slate-500 mb-1">USDC</span>
                             </div>
-                            <p className="text-[10px] text-slate-400">Calculated across 4 prize pools</p>
+                            <p className="text-[10px] text-slate-400">Calculated across 3 prize pools</p>
                         </div>
 
                         {/* Wallet Info */}
