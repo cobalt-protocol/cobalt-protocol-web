@@ -79,6 +79,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const { memberships, addMembership } = useMemberships()
   const [dialog, setDialog] = useState<RegistrationDialog>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [isConnecting, setIsConnecting] = useState(false)
 
   function navigate(href: string) {
     setDialog(null)
@@ -99,21 +100,21 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       return
     }
 
+    if (isConnecting) return
+
     if (typeof window === "undefined" || !(window as any).ethereum) {
       setNotice("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
       return
     }
 
-    try {
-      await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+    setIsConnecting(true)
 
+    try {
       const injectedConnector = connectors.find((c) => c.id === "injected") || connectors[0]
       if (injectedConnector) {
-        try {
-          await connectAsync({ connector: injectedConnector })
-        } catch (wagmiErr) {
-          console.log("Wagmi sync status:", wagmiErr)
-        }
+        await connectAsync({ connector: injectedConnector })
+      } else {
+        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
       }
 
       try {
@@ -132,21 +133,22 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.error("MetaMask connection error:", err)
-      if (
-        err?.code === 4001 ||
-        err?.message?.includes("user rejected") ||
-        err?.message?.includes("User rejected")
-      ) {
+      const msg = String(err?.message || "").toLowerCase()
+      const code = err?.code
+
+      if (code === 4001 || msg.includes("user rejected")) {
         return
       }
-      if (
-        err?.name === "ProviderNotFoundError" ||
-        err?.message?.includes("Provider not found")
-      ) {
+      if (code === -32002 || msg.includes("already processing") || msg.includes("already pending")) {
+        return
+      }
+      if (err?.name === "ProviderNotFoundError" || msg.includes("provider not found")) {
         setNotice("MetaMask wallet extension is not detected or inactive. Please enable MetaMask.")
         return
       }
       setNotice(err?.message || "Could not connect to MetaMask.")
+    } finally {
+      setIsConnecting(false)
     }
   }
 
