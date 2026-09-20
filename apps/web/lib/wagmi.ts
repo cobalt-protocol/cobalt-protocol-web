@@ -46,10 +46,21 @@ export async function connectMetaMaskDirectly() {
       ? eth.providers.find((p: any) => p.isMetaMask) || eth
       : eth
 
-  // 1. Request accounts (triggers MetaMask connect popup window)
-  const accounts = await provider.request({ method: "eth_requestAccounts" })
+  let accounts: string[] = []
+  try {
+    await provider.request({
+      method: "wallet_requestPermissions",
+      params: [{ eth_accounts: {} }],
+    })
+    accounts = await provider.request({ method: "eth_accounts" })
+  } catch (permErr: any) {
+    if (permErr?.code === 4001 || String(permErr?.message || "").includes("rejected")) {
+      throw permErr
+    }
+    accounts = await provider.request({ method: "eth_requestAccounts" })
+  }
 
-  // 2. Switch network to BotChain Testnet (Chain ID 968 / 0x3c8)
+  // Switch network to BotChain Testnet (Chain ID 968 / 0x3c8)
   const hexChainId = `0x${botChainTestnet.id.toString(16)}`
   try {
     await provider.request({
