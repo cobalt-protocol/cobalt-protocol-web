@@ -557,28 +557,7 @@ export default function CreateCompetition() {
                     </div>
                 </SectionCard>
 
-                {/* FOOTER ACTION BAR */}
-                <div className="bg-white rounded-xl p-6 flex flex-col gap-4 mt-8">
-                    <div className="flex items-center text-xs text-slate-500">
-                        <InfoIcon />
-                        <span className="ml-2">Once published, competition information cannot be edited. Please review all details before confirming.</span>
-                    </div>
-                    <div className="flex flex-col sm:flex-row items-center justify-between gap-4 w-full">
-                        <button className="w-full sm:w-auto text-slate-600 font-medium text-sm py-2 px-6 rounded-lg hover:bg-gray-50 transition-colors text-left sm:text-center">
-                            Cancel
-                        </button>
-                        <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-                            <button className="w-full sm:w-auto bg-white text-slate-600 font-medium text-sm py-2 px-6 rounded-lg hover:bg-gray-50 transition-colors">
-                                Save Draft
-                            </button>
-                            <button className="w-full sm:w-auto bg-[#2563EB] text-white font-medium text-sm py-2 px-6 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center">
-                                Confirm & Publish
-                                <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14 5l7 7m0 0l-7 7m7-7H3"></path></svg>
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
+                {/* END FORM SECTIONS */}
             </div>
         </div>
     );
