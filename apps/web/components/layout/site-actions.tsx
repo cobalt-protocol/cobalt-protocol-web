@@ -69,7 +69,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     isBoolean
   )
   const [sessionConnected, setSessionConnected] = useState<boolean | null>(null)
-  const connected = isWagmiConnected || (sessionConnected ?? storedConnected)
+  const connected = isWagmiConnected
   const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
     profileStorageKey,
     null,
@@ -110,15 +110,22 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true)
 
     try {
-      await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+      const targetConnector =
+        connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
+        connectors.find((c) => c.id === "injected") ||
+        connectors[0]
 
-      const injectedConnector = connectors.find((c) => c.id === "injected") || connectors[0]
-      if (injectedConnector) {
+      if (targetConnector) {
         try {
-          await connectAsync({ connector: injectedConnector })
-        } catch (wagmiErr) {
-          console.log("Wagmi sync status:", wagmiErr)
+          await connectAsync({ connector: targetConnector })
+        } catch (wagmiErr: any) {
+          if (wagmiErr?.code === 4001 || wagmiErr?.message?.includes("rejected")) {
+            return
+          }
+          await (window as any).ethereum.request({ method: "eth_requestAccounts" })
         }
+      } else {
+        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
       }
 
       try {
