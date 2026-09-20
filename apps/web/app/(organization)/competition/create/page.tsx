@@ -306,15 +306,19 @@ export default function CreateCompetition() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Name *</label>
-                            <input type="text" className="w-full bg-transparent text-slate-700 py-2.5 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue="Autonomous Agents Global Hackathon 2025" />
+                            <input
+                                type="text"
+                                className="w-full bg-white border border-slate-200/80 text-slate-700 py-2.5 px-4 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                                defaultValue="Autonomous Agents Global Hackathon 2025"
+                            />
                         </div>
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-2">Category *</label>
                             <Select value={category} onValueChange={(val) => val && setCategory(val)}>
-                                <SelectTrigger className="w-full h-11 bg-white border border-slate-200/80 text-slate-700 font-medium text-sm rounded-md px-4 focus:ring-2 focus:ring-blue-500 shadow-2xs">
+                                <SelectTrigger>
                                     <SelectValue placeholder="Select Category" />
                                 </SelectTrigger>
-                                <SelectContent className="bg-white border border-slate-200 rounded-lg shadow-lg z-50">
+                                <SelectContent>
                                     <SelectItem value="AI & Autonomous Systems">AI & Autonomous Systems</SelectItem>
                                     <SelectItem value="DeFi & Financial Technology">DeFi & Financial Technology</SelectItem>
                                     <SelectItem value="Biotech & Healthcare">Biotech & Healthcare</SelectItem>
@@ -335,11 +339,11 @@ export default function CreateCompetition() {
                 >
                     <div className="mb-6">
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Description *</label>
-                        <textarea rows={3} className="w-full bg-transparent text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" defaultValue="The Autonomous Agents Global Hackathon 2025 invites world-class AI engineers, cryptography researchers, and smart-contract developers to architect, stress-test, and deploy production-ready autonomous agent clusters. Teams will build verifiable execution runtimes leveraging zero-knowledge proofs and decentralized identity primitives."></textarea>
+                        <textarea rows={3} className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs" defaultValue="The Autonomous Agents Global Hackathon 2025 invites world-class AI engineers, cryptography researchers, and smart-contract developers to architect, stress-test, and deploy production-ready autonomous agent clusters. Teams will build verifiable execution runtimes leveraging zero-knowledge proofs and decentralized identity primitives."></textarea>
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Participant Requirements *</label>
-                        <textarea rows={3} className="w-full bg-transparent text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" defaultValue="- Teams of 1 to 5 members are permitted.&#10;- Open-source codebase with permissive MIT or Apache 2.0 licensing.&#10;- Must provide functional public GitHub repository with reproducible test suites.&#10;- Use of local wallet architecture is not mandatory; however, it is highly recommended."></textarea>
+                        <textarea rows={3} className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs" defaultValue="- Teams of 1 to 5 members are permitted.&#10;- Open-source codebase with permissive MIT or Apache 2.0 licensing.&#10;- Must provide functional public GitHub repository with reproducible test suites.&#10;- Use of local wallet architecture is not mandatory; however, it is highly recommended."></textarea>
                     </div>
                 </SectionCard>
 
