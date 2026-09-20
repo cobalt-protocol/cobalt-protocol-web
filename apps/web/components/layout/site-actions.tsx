@@ -87,14 +87,10 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleOpenWallet() {
-    if (isConnecting) return
-
     if (typeof window === "undefined" || !(window as any).ethereum) {
-      setNotice("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
+      alert("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
       return
     }
-
-    setIsConnecting(true)
 
     try {
       // 1. Direct call to MetaMask API guaranteeing account & network switch popups
@@ -123,41 +119,11 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         setDialog(null)
       }
     } catch (err: any) {
-      const msg = String(err?.message || err?.shortMessage || "").toLowerCase()
-      const name = String(err?.name || "")
-      const code = err?.code ?? err?.cause?.code
-
-      if (
-        code === 4001 ||
-        name === "UserRejectedRequestError" ||
-        msg.includes("user rejected") ||
-        msg.includes("rejected")
-      ) {
+      if (err?.code === 4001 || String(err?.message || "").includes("rejected")) {
         return
       }
-      if (
-        code === -32002 ||
-        name === "ResourceUnavailableRpcError" ||
-        msg.includes("already processing") ||
-        msg.includes("already pending")
-      ) {
-        return
-      }
-      if (name === "ConnectorAlreadyConnectedError" || msg.includes("already connected")) {
-        return
-      }
-      if (
-        name === "ProviderNotFoundError" ||
-        msg.includes("provider not found")
-      ) {
-        setNotice("MetaMask wallet extension is not detected or inactive. Please enable MetaMask.")
-        return
-      }
-
       console.error("MetaMask connection error:", err)
-      setNotice(err?.shortMessage || err?.message || "Could not connect to MetaMask.")
-    } finally {
-      setIsConnecting(false)
+      alert(err?.message || "Could not connect to MetaMask.")
     }
   }
 

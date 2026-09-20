@@ -37,9 +37,16 @@ export const wagmiConfig = createConfig({
 })
 
 export async function connectMetaMaskDirectly() {
-  if (typeof window === "undefined") return null
+  if (typeof window === "undefined") {
+    alert("Browser environment not ready.")
+    return null
+  }
+
   const eth = (window as any).ethereum
-  if (!eth) return null
+  if (!eth) {
+    alert("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
+    return null
+  }
 
   const provider =
     eth.providers && Array.isArray(eth.providers)
@@ -48,16 +55,20 @@ export async function connectMetaMaskDirectly() {
 
   let accounts: string[] = []
   try {
-    await provider.request({
-      method: "wallet_requestPermissions",
-      params: [{ eth_accounts: {} }],
-    })
-    accounts = await provider.request({ method: "eth_accounts" })
-  } catch (permErr: any) {
-    if (permErr?.code === 4001 || String(permErr?.message || "").includes("rejected")) {
-      throw permErr
-    }
     accounts = await provider.request({ method: "eth_requestAccounts" })
+  } catch (err: any) {
+    if (err?.code === 4001 || String(err?.message || "").includes("rejected")) {
+      throw err
+    }
+    try {
+      await provider.request({
+        method: "wallet_requestPermissions",
+        params: [{ eth_accounts: {} }],
+      })
+      accounts = await provider.request({ method: "eth_accounts" })
+    } catch (permErr: any) {
+      throw err
+    }
   }
 
   // Switch network to BotChain Testnet (Chain ID 968 / 0x3c8)
@@ -73,18 +84,22 @@ export async function connectMetaMaskDirectly() {
       switchError?.data?.originalError?.code === 4902 ||
       String(switchError?.message || "").includes("4902")
     ) {
-      await provider.request({
-        method: "wallet_addEthereumChain",
-        params: [
-          {
-            chainId: hexChainId,
-            chainName: botChainTestnet.name,
-            nativeCurrency: botChainTestnet.nativeCurrency,
-            rpcUrls: botChainTestnet.rpcUrls.default.http,
-            blockExplorerUrls: [botChainTestnet.blockExplorers.default.url],
-          },
-        ],
-      })
+      try {
+        await provider.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId: hexChainId,
+              chainName: botChainTestnet.name,
+              nativeCurrency: botChainTestnet.nativeCurrency,
+              rpcUrls: botChainTestnet.rpcUrls.default.http,
+              blockExplorerUrls: [botChainTestnet.blockExplorers.default.url],
+            },
+          ],
+        })
+      } catch (addErr) {
+        console.error("Add chain error:", addErr)
+      }
     }
   }
 
