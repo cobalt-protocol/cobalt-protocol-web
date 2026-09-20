@@ -148,27 +148,50 @@ const CertificateFileInput = ({
 interface DateCardProps {
     title: string;
     startLabel: string;
-    startDate: string;
-    endLabel: string;
-    endDate: string;
+    startDateValue: string;
+    onStartChange: (val: string) => void;
+    endLabel?: string;
+    endDateValue?: string;
+    onEndChange?: (val: string) => void;
     icon: React.ReactNode;
 }
 
-const DateCard = ({ title, startLabel, startDate, endLabel, endDate, icon }: DateCardProps) => (
-    <div className="bg-[#EFF4FF] rounded-lg p-4">
+const DateCard = ({
+    title,
+    startLabel,
+    startDateValue,
+    onStartChange,
+    endLabel,
+    endDateValue,
+    onEndChange,
+    icon,
+}: DateCardProps) => (
+    <div className="bg-[#EFF4FF] rounded-lg p-4 flex flex-col justify-between">
         <div className="flex items-center space-x-2 mb-3">
             {icon}
             <h4 className="text-sm font-semibold text-slate-700">{title}</h4>
         </div>
-        <div className="flex justify-between text-xs">
+        <div className={`grid ${endLabel && endDateValue !== undefined ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 text-xs`}>
             <div>
-                <p className="text-slate-400 mb-1 font-medium">{startLabel}</p>
-                <p className="text-slate-700 font-semibold">{startDate}</p>
+                <label className="block text-slate-400 mb-1 font-medium text-[10px] uppercase">{startLabel}</label>
+                <input
+                    type="datetime-local"
+                    value={startDateValue}
+                    onChange={(e) => onStartChange(e.target.value)}
+                    className="w-full bg-white/80 focus:bg-white text-slate-700 text-xs py-1.5 px-2 rounded border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium transition-colors"
+                />
             </div>
-            <div className="text-right">
-                <p className="text-slate-400 mb-1 font-medium">{endLabel}</p>
-                <p className="text-slate-700 font-semibold">{endDate}</p>
-            </div>
+            {endLabel && endDateValue !== undefined && onEndChange && (
+                <div>
+                    <label className="block text-slate-400 mb-1 font-medium text-[10px] uppercase">{endLabel}</label>
+                    <input
+                        type="datetime-local"
+                        value={endDateValue}
+                        onChange={(e) => onEndChange(e.target.value)}
+                        className="w-full bg-white/80 focus:bg-white text-slate-700 text-xs py-1.5 px-2 rounded border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium transition-colors"
+                    />
+                </div>
+            )}
         </div>
     </div>
 );
@@ -189,6 +212,22 @@ const INITIAL_PRIZES: PrizeCategory[] = [
 export default function CreateCompetition() {
     const [prizes, setPrizes] = useState<PrizeCategory[]>(INITIAL_PRIZES);
     const [participantCertificate, setParticipantCertificate] = useState('Upload4.pdf');
+
+    const [duration, setDuration] = useState({
+        registrationStart: '2025-04-01T09:00',
+        registrationEnd: '2025-04-20T23:59',
+        competitionStart: '2025-04-22T12:01',
+        competitionEnd: '2025-05-16T23:59',
+        submissionDeadline: '2025-05-16T23:59',
+        judgingStart: '2025-05-16T09:00',
+        judgingEnd: '2025-05-22T06:00',
+        resultsAnnouncement: '2025-05-24T15:00',
+        prizeClaimStart: '2025-05-25T10:00',
+    });
+
+    const handleDurationChange = (key: keyof typeof duration, val: string) => {
+        setDuration((prev) => ({ ...prev, [key]: val }));
+    };
 
     const handlePrizeChange = (index: number, field: keyof PrizeCategory, value: string) => {
         setPrizes((prev) =>
@@ -293,12 +332,57 @@ export default function CreateCompetition() {
                     step="STEP 03/06"
                 >
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        <DateCard title="Registration Window" icon={<CalendarIcon />} startLabel="START DATE" startDate="04/01/2025, 09:00" endLabel="END DATE" endDate="04/20/2025, 11:59 PM" />
-                        <DateCard title="Competition Window" icon={<CalendarIcon />} startLabel="START DATE" startDate="04/22/2025, 12:01" endLabel="END DATE" endDate="05/16/2025, 11:59 PM" />
-                        <DateCard title="Submission Deadline" icon={<CalendarIcon />} startLabel="FINAL CUTOFF DATE" startDate="-" endLabel="" endDate="05/16/2025, 11:59 PM" />
-                        <DateCard title="Judging & Review" icon={<CalendarIcon />} startLabel="START DATE" startDate="05/16/2025, 09:00" endLabel="END DATE" endDate="05/22/2025, 06:00" />
-                        <DateCard title="Results Announcement" icon={<CalendarIcon />} startLabel="ANNOUNCEMENT DATE" startDate="05/24/2025, 03:00 PM" endLabel="" endDate="" />
-                        <DateCard title="Prize & Certificate Claim" icon={<CalendarIcon />} startLabel="CLAIM START DATE" startDate="05/25/2025, 10:00 AM" endLabel="" endDate="" />
+                        <DateCard
+                            title="Registration Window"
+                            icon={<CalendarIcon />}
+                            startLabel="Start Date & Time"
+                            startDateValue={duration.registrationStart}
+                            onStartChange={(val) => handleDurationChange('registrationStart', val)}
+                            endLabel="End Date & Time"
+                            endDateValue={duration.registrationEnd}
+                            onEndChange={(val) => handleDurationChange('registrationEnd', val)}
+                        />
+                        <DateCard
+                            title="Competition Window"
+                            icon={<CalendarIcon />}
+                            startLabel="Start Date & Time"
+                            startDateValue={duration.competitionStart}
+                            onStartChange={(val) => handleDurationChange('competitionStart', val)}
+                            endLabel="End Date & Time"
+                            endDateValue={duration.competitionEnd}
+                            onEndChange={(val) => handleDurationChange('competitionEnd', val)}
+                        />
+                        <DateCard
+                            title="Submission Deadline"
+                            icon={<CalendarIcon />}
+                            startLabel="Final Cutoff Date & Time"
+                            startDateValue={duration.submissionDeadline}
+                            onStartChange={(val) => handleDurationChange('submissionDeadline', val)}
+                        />
+                        <DateCard
+                            title="Judging & Review"
+                            icon={<CalendarIcon />}
+                            startLabel="Start Date & Time"
+                            startDateValue={duration.judgingStart}
+                            onStartChange={(val) => handleDurationChange('judgingStart', val)}
+                            endLabel="End Date & Time"
+                            endDateValue={duration.judgingEnd}
+                            onEndChange={(val) => handleDurationChange('judgingEnd', val)}
+                        />
+                        <DateCard
+                            title="Results Announcement"
+                            icon={<CalendarIcon />}
+                            startLabel="Announcement Date & Time"
+                            startDateValue={duration.resultsAnnouncement}
+                            onStartChange={(val) => handleDurationChange('resultsAnnouncement', val)}
+                        />
+                        <DateCard
+                            title="Prize & Certificate Claim"
+                            icon={<CalendarIcon />}
+                            startLabel="Claim Start Date & Time"
+                            startDateValue={duration.prizeClaimStart}
+                            onStartChange={(val) => handleDurationChange('prizeClaimStart', val)}
+                        />
                     </div>
                 </SectionCard>
 
