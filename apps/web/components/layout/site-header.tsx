@@ -58,9 +58,7 @@ export function SiteHeader() {
               className="h-9 px-3 text-xs sm:text-sm"
               onClick={connected ? disconnectWallet : openWallet}
             >
-              {connected
-                ? formattedAddress ?? "Disconnect Wallet"
-                : "Connect Wallet"}
+              {connected ? "Disconnect Wallet" : "Connect Wallet"}
             </Button>
           )}
           {connected ? (

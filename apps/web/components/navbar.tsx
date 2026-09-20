@@ -45,7 +45,7 @@ const NavBar = () => {
                         onClick={connected ? disconnectWallet : openWallet}
                         className="bg-[#2563EB] text-white text-sm hover:opacity-90 active:scale-95 transition-all px-6 h-11 rounded-md"
                     >
-                        {connected ? (formattedAddress ?? "Disconnect Wallet") : "Connect Wallet"}
+                        {connected ? "Disconnect Wallet" : "Connect Wallet"}
                     </button>
                 )}
             </nav>
