@@ -3,7 +3,7 @@
   margin-inline: auto;
 }
 .hero {
-  padding: 96px 0 92px;
+  padding: 96px 0 82px;
   background:
     radial-gradient(ellipse at 77% 31%, #e0f8fa99, transparent 36%),
     radial-gradient(ellipse at 44% 41%, #e7edffb0, transparent 42%), #f8f9ff;
@@ -309,7 +309,7 @@
     width: calc(100% - 40px);
   }
   .hero {
-    padding: 65px 0 50px;
+    padding: 65px 0 40px;
   }
   .hero h1 {
     letter-spacing: -1.7px;

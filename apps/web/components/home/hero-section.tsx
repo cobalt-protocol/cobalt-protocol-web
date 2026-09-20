@@ -1,4 +1,5 @@
 "use client"
+import Image from "next/image"
 import Link from "next/link"
 import {
   ArrowRight,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react"
 import { routes } from "@/lib/routes"
 import styles from "./home.module.css"
+
 const lifecycle = [
   {
     title: "Discover",
@@ -38,6 +40,14 @@ const lifecycle = [
     text: "Instant disbursement & soulbound NFT",
     icon: Wallet,
   },
+]
+
+const partners = [
+  { name: "BotChain", logo: "/botchain.png", className: "rounded-[6px]" },
+  { name: "MetaMask", logo: "/metamask.png" },
+  { name: "Tether", logo: "/tether.png" },
+  { name: "Indodax", logo: "/indodax.png" },
+  { name: "Binance", logo: "/binance.png" },
 ]
 
 export function HeroSection() {
@@ -129,7 +139,29 @@ export function HeroSection() {
             ))}
           </div>
         </div>
+        <div className="mt-9 flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:mt-12 md:gap-8">
+          <span className="text-xs font-medium text-[#737e95] sm:text-sm md:text-base">
+            Powered by:
+          </span>
+          <div className="flex flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8">
+            {partners.map((partner) => (
+              <div key={partner.name} className="flex items-center gap-2">
+                <Image
+                  src={partner.logo}
+                  alt={partner.name}
+                  width={28}
+                  height={28}
+                  className={`h-6 w-6 object-contain sm:h-7 sm:w-7 ${partner.className ?? ""}`}
+                />
+                <span className="text-sm font-bold text-[#1a202c] sm:text-base md:text-lg">
+                  {partner.name}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
     </section>
   )
 }
+
