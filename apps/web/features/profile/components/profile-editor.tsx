@@ -9,7 +9,9 @@ import {
 import { Button } from "@workspace/ui/components/button"
 import {
   AtSign,
+  Check,
   CloudUpload,
+  Copy,
   Pencil,
   Plus,
   SquareTerminal,
@@ -39,8 +41,20 @@ export function ProfileEditor({
   const [skillName, setSkillName] = useState("")
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
+  const [copied, setCopied] = useState(false)
   const { openWallet, connected, disconnectWallet, address, balance, chainName } =
     useSiteActions()
+
+  async function copyAddress() {
+    if (!address) return
+    try {
+      await navigator.clipboard.writeText(address)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // ignore
+    }
+  }
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = {
@@ -142,9 +156,34 @@ export function ProfileEditor({
           <div className="my-5 rounded-xl bg-secondary/60 p-4 space-y-3">
             <div>
               <p className="text-xs text-muted-foreground font-medium">Wallet Address</p>
-              <p className="mt-0.5 text-sm font-bold font-mono" title={address}>
-                {connected ? formatAddress(address) : "Not connected"}
-              </p>
+              <div className="mt-0.5 flex items-center gap-2">
+                <p className="text-sm font-bold font-mono" title={address}>
+                  {connected ? formatAddress(address) : "Not connected"}
+                </p>
+                {connected && address && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="xs"
+                    onClick={copyAddress}
+                    title="Copy wallet address"
+                    aria-label="Copy wallet address"
+                    className="h-6 gap-1 px-2 text-xs"
+                  >
+                    {copied ? (
+                      <>
+                        <Check size={12} className="text-green-600" />
+                        <span className="text-green-600 font-semibold">Copied</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy size={12} />
+                        <span>Copy</span>
+                      </>
+                    )}
+                  </Button>
+                )}
+              </div>
             </div>
             <div>
               <p className="text-xs text-muted-foreground font-medium">Wallet Balance</p>
