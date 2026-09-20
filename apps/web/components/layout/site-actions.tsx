@@ -1,12 +1,13 @@
 "use client"
-import { createContext, useContext, useState, type ReactNode } from "react"
+import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
+import { useModal } from "connectkit"
 import { Button } from "@workspace/ui/components/button"
 import { Modal } from "@/components/ui/modal"
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
-import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly } from "@/lib/wagmi"
+import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly } from "@/lib/wagmi"
 import {
   isBuilderProfile,
   mockProfile,
@@ -60,8 +61,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const { disconnectAsync } = useDisconnect()
   const chainId = useChainId()
   const { switchChainAsync } = useSwitchChain()
-
-  const isWrongNetwork = Boolean(isWagmiConnected && chainId !== botChainTestnet.id)
+  const { setOpen: setConnectKitOpen } = useModal()
 
   const { value: storedConnected, save: saveConnected } = useBrowserDraft(
     "cobalt:wallet-preview:v1",
@@ -69,7 +69,64 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     isBoolean
   )
   const [sessionConnected, setSessionConnected] = useState<boolean | null>(null)
-  const connected = isWagmiConnected
+  const [directAddress, setDirectAddress] = useState<string | null>(null)
+  const [userDisconnected, setUserDisconnected] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("cobalt:disconnected") === "true"
+    }
+    return false
+  })
+
+  const connected = !userDisconnected && (isWagmiConnected || Boolean(directAddress) || Boolean(sessionConnected ?? storedConnected))
+  const effectiveAddress = !userDisconnected ? (address ? String(address) : directAddress ?? undefined) : undefined
+  const isWrongNetwork = Boolean(!userDisconnected && isWagmiConnected && chainId !== botChainTestnet.id)
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !(window as any).ethereum) return
+
+    const eth = (window as any).ethereum
+    const provider =
+      eth.providers && Array.isArray(eth.providers)
+        ? eth.providers.find((p: any) => p.isMetaMask) || eth
+        : eth
+
+    const checkAccounts = async () => {
+      if (window.localStorage.getItem("cobalt:disconnected") === "true") {
+        return
+      }
+      try {
+        const accs: string[] = await provider.request({ method: "eth_accounts" })
+        if (accs && accs.length > 0 && accs[0]) {
+          setDirectAddress(accs[0])
+          setSessionConnected(true)
+        }
+      } catch (e) {
+        console.log("Error checking accounts:", e)
+      }
+    }
+
+    checkAccounts()
+
+    const handleAccountsChanged = (accs: string[]) => {
+      if (window.localStorage.getItem("cobalt:disconnected") === "true") {
+        return
+      }
+      if (accs && accs.length > 0 && accs[0]) {
+        setDirectAddress(accs[0])
+        setSessionConnected(true)
+        saveConnected(true)
+      } else {
+        setDirectAddress(null)
+        setSessionConnected(false)
+        saveConnected(false)
+      }
+    }
+
+    provider.on?.("accountsChanged", handleAccountsChanged)
+    return () => {
+      provider.removeListener?.("accountsChanged", handleAccountsChanged)
+    }
+  }, [saveConnected])
   const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
     profileStorageKey,
     null,
@@ -87,47 +144,43 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   }
 
   async function handleOpenWallet() {
-    if (typeof window === "undefined" || !(window as any).ethereum) {
-      alert("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
-      return
-    }
+    if (isConnecting) return
 
     try {
-      // 1. Direct call to MetaMask API guaranteeing account & network switch popups
-      await connectMetaMaskDirectly()
-
-      // 2. Sync Wagmi status
-      const targetConnector =
-        connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
-        connectors.find((c) => c.id === "injected") ||
-        connectors[0]
-
-      if (targetConnector && !isWagmiConnected) {
-        try {
-          await connectAsync({ connector: targetConnector })
-        } catch (wagmiErr: any) {
-          console.log("Wagmi sync status:", wagmiErr)
-        }
+      setIsConnecting(true)
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("cobalt:disconnected")
       }
+      setUserDisconnected(false)
 
-      const competition = dialog?.competition ?? null
-      if (!isProfileComplete(savedProfile)) {
-        setDialog({ kind: "profile", competition })
-      } else if (competition) {
-        continueRegistration(competition, true, savedProfile)
-      } else {
-        setDialog(null)
+      try {
+        setConnectKitOpen(true)
+      } catch (modalErr) {
+        console.warn("ConnectKit modal open error, using direct connection fallback:", modalErr)
+        await connectMetaMaskDirectly()
       }
     } catch (err: any) {
-      if (err?.code === 4001 || String(err?.message || "").includes("rejected")) {
+      const errMsg = String(err?.message || "").toLowerCase()
+      if (err?.code === 4001 || errMsg.includes("rejected") || errMsg.includes("user denied")) {
         return
       }
-      console.error("MetaMask connection error:", err)
-      alert(err?.message || "Could not connect to MetaMask.")
+      console.error("Wallet connection error:", err)
+      alert(err?.message || "Gagal terhubung ke dompet Web3.")
+    } finally {
+      setIsConnecting(false)
     }
   }
 
   async function handleDisconnectWallet() {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("cobalt:disconnected", "true")
+    }
+    setUserDisconnected(true)
+
+    // 1. Hard disconnect: revoke eth_accounts permission from MetaMask extension
+    await disconnectMetaMaskDirectly()
+
+    // 2. Disconnect Wagmi session
     if (isWagmiConnected) {
       try {
         await disconnectAsync()
@@ -135,6 +188,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         // Ignore disconnect errors
       }
     }
+    setDirectAddress(null)
     setSessionConnected(saveConnected(false) ? null : false)
     setDialog(null)
     setNotice(null)
@@ -223,7 +277,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         openWallet: handleOpenWallet,
         showNotice: setNotice,
         connected,
-        address: address ? String(address) : undefined,
+        address: effectiveAddress,
         chainName: chain?.name,
         isWrongNetwork,
         switchNetwork: handleSwitchNetwork,

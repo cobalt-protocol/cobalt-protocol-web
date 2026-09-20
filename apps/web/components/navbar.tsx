@@ -2,20 +2,15 @@
 
 import Image from "next/image"
 import { useSiteActions } from "@/components/layout/site-actions"
+import { AccountMenu } from "@/components/layout/account-menu"
 
 const NavBar = () => {
     const {
         openWallet,
         connected,
-        address,
         isWrongNetwork,
         switchNetwork,
-        disconnectWallet,
     } = useSiteActions()
-
-    const formattedAddress = address
-        ? `${address.slice(0, 6)}...${address.slice(-4)}`
-        : null
 
     return (
         <>
@@ -26,11 +21,13 @@ const NavBar = () => {
                         src="/icon.webp"
                         alt="Logo"
                         width={300}
-                        height={300}
+                        height={75}
+                        style={{ height: "auto" }}
+                        className="w-[300px] object-contain"
                     />
                 </a>
 
-                {/* Connect Wallet Button */}
+                {/* Connect Wallet / Account Menu */}
                 {isWrongNetwork ? (
                     <button
                         type="button"
@@ -39,13 +36,15 @@ const NavBar = () => {
                     >
                         Switch to BotChain Testnet
                     </button>
+                ) : connected ? (
+                    <AccountMenu />
                 ) : (
                     <button
                         type="button"
-                        onClick={connected ? disconnectWallet : openWallet}
-                        className="bg-[#2563EB] text-white text-sm hover:opacity-90 active:scale-95 transition-all px-6 h-11 rounded-md"
+                        onClick={openWallet}
+                        className="bg-[#2563EB] text-white text-sm hover:opacity-90 active:scale-95 transition-all px-6 h-11 rounded-md font-medium"
                     >
-                        {connected ? "Disconnect Wallet" : "Connect Wallet"}
+                        Connect Wallet
                     </button>
                 )}
             </nav>

@@ -18,7 +18,7 @@ export function AccountMenu() {
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
         aria-label="Account menu"
-        className="rounded-full bg-primary p-2 text-white"
+        className="rounded-full bg-primary p-2 text-white cursor-pointer"
       >
         <UserRound size={18} />
       </DropdownMenu.Trigger>
@@ -43,7 +43,7 @@ export function AccountMenu() {
                 key={href}
                 closeOnClick
                 render={<Link href={href} />}
-                className={`flex items-center gap-3 rounded-lg p-3 outline-none data-highlighted:bg-blue-50 ${pathname === href ? "bg-blue-50 text-primary" : ""}`}
+                className={`flex items-center gap-3 rounded-lg p-3 outline-none cursor-pointer data-highlighted:bg-blue-50 ${pathname === href ? "bg-blue-50 text-primary" : ""}`}
               >
                 <span
                   className={`rounded-lg p-2 ${pathname === href ? "bg-primary text-white" : "bg-blue-50"}`}
@@ -67,14 +67,14 @@ export function AccountMenu() {
                   "Wallet preview is connected. Real escrow balances and key settings will be available after wallet integration. Never enter a recovery phrase here."
                 )
               }
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs outline-none data-highlighted:bg-blue-50"
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs outline-none cursor-pointer data-highlighted:bg-blue-50"
             >
               <SlidersHorizontal size={16} />
               Escrow & Key Settings
             </DropdownMenu.Item>
             <DropdownMenu.Item
               onClick={disconnectWallet}
-              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs text-red-600 outline-none data-highlighted:bg-red-50"
+              className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs text-red-600 outline-none cursor-pointer data-highlighted:bg-red-50"
             >
               <LogOut size={16} />
               Disconnect Multi-sig

@@ -4,7 +4,7 @@ import { routes } from "@/lib/routes"
 import { Brand } from "./site-header"
 import { useSiteActions } from "./site-actions"
 export function SiteFooter() {
-  const { openWallet, showNotice } = useSiteActions()
+  const { openWallet, connected, showNotice } = useSiteActions()
   const linkClass =
     "block text-left text-xs leading-6 text-muted-foreground hover:text-primary"
   return (
@@ -33,9 +33,11 @@ export function SiteFooter() {
             <Link href={routes.organization} className={linkClass}>
               Host Competition
             </Link>
-            <button className={linkClass} onClick={openWallet}>
-              Connect Wallet
-            </button>
+            {!connected ? (
+              <button className={linkClass} onClick={openWallet}>
+                Connect Wallet
+              </button>
+            ) : null}
           </div>
           <div>
             <h2 className="mb-3 text-sm font-bold">Platform</h2>

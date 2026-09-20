@@ -1,5 +1,4 @@
 "use client"
-import { UserRound } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
 import { Button } from "@workspace/ui/components/button"
@@ -18,7 +17,8 @@ export function Brand() {
         alt="Cobalt Protocol logo"
         width={200}
         height={50}
-        className="h-auto w-[200px] object-contain"
+        style={{ height: "auto" }}
+        className="w-[200px] object-contain"
       />
     </Link>
   )
@@ -27,15 +27,9 @@ export function SiteHeader() {
   const {
     openWallet,
     connected,
-    address,
     isWrongNetwork,
     switchNetwork,
-    disconnectWallet,
   } = useSiteActions()
-
-  const formattedAddress = address
-    ? `${address.slice(0, 6)}...${address.slice(-4)}`
-    : null
 
   return (
     <header className="border-b border-border/30 bg-white">
@@ -53,24 +47,16 @@ export function SiteHeader() {
             >
               Switch to BotChain Testnet
             </Button>
-          ) : (
-            <Button
-              className="h-9 px-3 text-xs sm:text-sm"
-              onClick={connected ? disconnectWallet : openWallet}
-            >
-              {connected ? "Disconnect Wallet" : "Connect Wallet"}
-            </Button>
-          )}
-          {connected ? (
+          ) : connected ? (
             <AccountMenu />
           ) : (
-            <Link
-              href={routes.profile}
-              aria-label="Your profile"
-              className="rounded-full bg-blue-50 p-2 text-primary"
+            <Button
+              variant="default"
+              className="h-9 px-3 text-xs sm:text-sm"
+              onClick={openWallet}
             >
-              <UserRound size={18} />
-            </Link>
+              Connect Wallet
+            </Button>
           )}
         </nav>
       </div>

@@ -27,7 +27,8 @@
   ],
   "dependencies": {
     "@tanstack/react-query": "^5.103.1",
-    "viem": "^2.56.8",
+    "connectkit": "^1.9.2",
+    "viem": "2.x",
     "wagmi": "^3.7.7"
   }
 }
