@@ -27,6 +27,7 @@ export const botChainTestnet = defineChain({
 export const wagmiConfig = createConfig({
   chains: [botChainTestnet],
   connectors: [
+    injected({ target: "metaMask" }),
     injected(),
     metaMask(),
   ],
@@ -35,3 +36,28 @@ export const wagmiConfig = createConfig({
     [botChainTestnet.id]: http(),
   },
 })
+
+export async function addBotChainTestnetToWallet() {
+  if (typeof window !== "undefined" && (window as any).ethereum) {
+    try {
+      await (window as any).ethereum.request({
+        method: "wallet_addEthereumChain",
+        params: [
+          {
+            chainId: `0x${botChainTestnet.id.toString(16)}`,
+            chainName: botChainTestnet.name,
+            nativeCurrency: botChainTestnet.nativeCurrency,
+            rpcUrls: botChainTestnet.rpcUrls.default.http,
+            blockExplorerUrls: [botChainTestnet.blockExplorers.default.url],
+          },
+        ],
+      })
+      return true
+    } catch (err) {
+      console.error("Failed to add BotChain Testnet network:", err)
+      return false
+    }
+  }
+  return false
+}
+

@@ -7,7 +7,7 @@ import { WalletOnboardingDialog } from "@/features/registration/components/walle
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
-import { botChainTestnet } from "@/lib/wagmi"
+import { botChainTestnet, addBotChainTestnetToWallet } from "@/lib/wagmi"
 import {
   isBuilderProfile,
   mockProfile,
@@ -100,7 +100,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         try {
           await switchChainAsync({ chainId: botChainTestnet.id })
         } catch {
-          setNotice(`Please switch your wallet network to ${botChainTestnet.name}.`)
+          await addBotChainTestnetToWallet()
         }
       } else {
         setNotice("Your wallet is connected to " + (chain?.name ?? botChainTestnet.name) + ".")
@@ -108,10 +108,25 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const connector = connectors.find((c) => c.id === "metaMask") || connectors[0]
-    if (connector) {
+    const metaMaskConnector =
+      connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
+      connectors.find((c) => c.id === "injected") ||
+      connectors[0]
+
+    if (typeof window !== "undefined" && (window as any).ethereum) {
       try {
-        await connectAsync({ connector, chainId: botChainTestnet.id })
+        if (metaMaskConnector) {
+          await connectAsync({ connector: metaMaskConnector })
+        } else {
+          await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+        }
+
+        try {
+          await switchChainAsync({ chainId: botChainTestnet.id })
+        } catch {
+          await addBotChainTestnetToWallet()
+        }
+
         const competition = dialog?.competition ?? null
         if (!isProfileComplete(savedProfile)) {
           setDialog({ kind: "profile", competition })
@@ -121,10 +136,14 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           setDialog(null)
         }
         return
-      } catch {
-        // Fall back to onboarding dialog
+      } catch (err: any) {
+        console.error("MetaMask connection error:", err)
+        if (err?.code === 4001 || err?.message?.includes("user rejected")) {
+          return
+        }
       }
     }
+
     setWalletOpen(true)
   }
 
@@ -145,7 +164,10 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     try {
       await switchChainAsync({ chainId: botChainTestnet.id })
     } catch {
-      setNotice(`Could not switch network automatically. Please switch to ${botChainTestnet.name} in your wallet.`)
+      const added = await addBotChainTestnetToWallet()
+      if (!added) {
+        setNotice(`Could not switch network automatically. Please switch to ${botChainTestnet.name} in your wallet.`)
+      }
     }
   }
   function register(
