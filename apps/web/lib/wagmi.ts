@@ -1,5 +1,5 @@
 import { createConfig, http } from "wagmi"
-import { injected, metaMask } from "wagmi/connectors"
+import { injected } from "wagmi/connectors"
 import { defineChain } from "viem"
 
 export const botChainTestnet = defineChain({
@@ -27,9 +27,7 @@ export const botChainTestnet = defineChain({
 export const wagmiConfig = createConfig({
   chains: [botChainTestnet],
   connectors: [
-    injected({ target: "metaMask" }),
     injected(),
-    metaMask(),
   ],
   ssr: true,
   transports: {

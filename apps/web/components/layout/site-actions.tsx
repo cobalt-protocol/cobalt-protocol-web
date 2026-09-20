@@ -99,19 +99,21 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       return
     }
 
-    const metaMaskConnector =
-      connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
-      connectors.find((c) => c.id === "injected") ||
-      connectors[0]
+    if (typeof window === "undefined" || !(window as any).ethereum) {
+      setNotice("MetaMask wallet extension is not installed in your browser. Please install MetaMask to connect.")
+      return
+    }
 
     try {
-      if (metaMaskConnector) {
-        await connectAsync({ connector: metaMaskConnector })
-      } else if (typeof window !== "undefined" && (window as any).ethereum) {
-        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
-      } else {
-        setNotice("MetaMask wallet extension is not detected. Please install MetaMask in your browser.")
-        return
+      await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+
+      const injectedConnector = connectors.find((c) => c.id === "injected") || connectors[0]
+      if (injectedConnector) {
+        try {
+          await connectAsync({ connector: injectedConnector })
+        } catch (wagmiErr) {
+          console.log("Wagmi sync status:", wagmiErr)
+        }
       }
 
       try {
@@ -130,7 +132,18 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       }
     } catch (err: any) {
       console.error("MetaMask connection error:", err)
-      if (err?.code === 4001 || err?.message?.includes("user rejected")) {
+      if (
+        err?.code === 4001 ||
+        err?.message?.includes("user rejected") ||
+        err?.message?.includes("User rejected")
+      ) {
+        return
+      }
+      if (
+        err?.name === "ProviderNotFoundError" ||
+        err?.message?.includes("Provider not found")
+      ) {
+        setNotice("MetaMask wallet extension is not detected or inactive. Please enable MetaMask.")
         return
       }
       setNotice(err?.message || "Could not connect to MetaMask.")
