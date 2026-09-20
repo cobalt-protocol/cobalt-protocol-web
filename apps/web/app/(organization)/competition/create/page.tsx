@@ -3,6 +3,7 @@
 import React, { useState, useRef } from 'react';
 import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
 import { Input } from '@workspace/ui/components/input';
+import { DateTimePicker } from '@/components/ui/date-picker';
 
 // --- KUMPULAN IKON SVG ---
 const InfoIcon = () => (
@@ -175,29 +176,27 @@ const DateCard = ({
             <h4 className="text-sm font-bold text-slate-800">{title}</h4>
         </div>
         <div className={`grid ${endLabel && endDateValue !== undefined ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 text-xs`}>
-            <div className="bg-white/90 p-2.5 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
+            <div className="bg-white/90 p-2 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
                 <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider flex items-center gap-1.5">
                     <CalendarIconLucide className="w-3 h-3 text-blue-500 shrink-0" />
                     {startLabel}
                 </label>
-                <Input
-                    type="datetime-local"
+                <DateTimePicker
                     value={startDateValue}
-                    onChange={(e) => onStartChange(e.target.value)}
-                    className="h-8 bg-transparent text-slate-800 text-xs border-0 p-0 focus-visible:ring-0 focus-visible:border-transparent font-medium cursor-pointer"
+                    onChange={onStartChange}
+                    placeholder="Select date & time"
                 />
             </div>
             {endLabel && endDateValue !== undefined && onEndChange && (
-                <div className="bg-white/90 p-2.5 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
+                <div className="bg-white/90 p-2 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
                     <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider flex items-center gap-1.5">
                         <Clock className="w-3 h-3 text-blue-500 shrink-0" />
                         {endLabel}
                     </label>
-                    <Input
-                        type="datetime-local"
+                    <DateTimePicker
                         value={endDateValue}
-                        onChange={(e) => onEndChange(e.target.value)}
-                        className="h-8 bg-transparent text-slate-800 text-xs border-0 p-0 focus-visible:ring-0 focus-visible:border-transparent font-medium cursor-pointer"
+                        onChange={onEndChange}
+                        placeholder="Select date & time"
                     />
                 </div>
             )}
@@ -262,7 +261,7 @@ export default function CreateCompetition() {
     };
 
     const handleRemovePrize = (index: number) => {
-        if (prizes.length <= 1) return;
+        if (index < INITIAL_PRIZES.length) return;
         setPrizes((prev) => prev.filter((_, i) => i !== index));
     };
 
@@ -403,50 +402,53 @@ export default function CreateCompetition() {
                     step="STEP 04/06"
                 >
                     <div className="space-y-3">
-                        {prizes.map((prize, index) => (
-                            <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                                <div className={prizes.length > 1 ? "md:col-span-4" : "md:col-span-4"}>
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Category Name</label>
-                                    <input
-                                        type="text"
-                                        className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-                                        value={prize.place}
-                                        onChange={(e) => handlePrizeChange(index, 'place', e.target.value)}
-                                    />
-                                </div>
-                                <div className="md:col-span-4 relative">
-                                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Amount</label>
-                                    <div className="relative">
-                                        <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-sm">$</span>
+                        {prizes.map((prize, index) => {
+                            const isDefaultCard = index < INITIAL_PRIZES.length;
+                            return (
+                                <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+                                    <div className={!isDefaultCard ? "md:col-span-4" : "md:col-span-4"}>
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Category Name</label>
                                         <input
                                             type="text"
-                                            className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 pl-7 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-                                            value={prize.amount}
-                                            onChange={(e) => handlePrizeChange(index, 'amount', e.target.value)}
+                                            className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                                            value={prize.place}
+                                            onChange={(e) => handlePrizeChange(index, 'place', e.target.value)}
                                         />
-                                        <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs font-semibold">USDC</span>
                                     </div>
-                                </div>
-                                <div className={prizes.length > 1 ? "md:col-span-3" : "md:col-span-4"}>
-                                    <CertificateFileInput
-                                        fileName={prize.file}
-                                        onFileChange={(file) => handleCertificateChange(index, file)}
-                                    />
-                                </div>
-                                {prizes.length > 1 && (
-                                    <div className="md:col-span-1 flex justify-end items-center pt-2 md:pt-4">
-                                        <button
-                                            type="button"
-                                            onClick={() => handleRemovePrize(index)}
-                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors"
-                                            title="Remove Prize Category"
-                                        >
-                                            <TrashIcon />
-                                        </button>
+                                    <div className="md:col-span-4 relative">
+                                        <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Amount</label>
+                                        <div className="relative">
+                                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-sm">$</span>
+                                            <input
+                                                type="text"
+                                                className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 pl-7 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                                                value={prize.amount}
+                                                onChange={(e) => handlePrizeChange(index, 'amount', e.target.value)}
+                                            />
+                                            <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs font-semibold">USDC</span>
+                                        </div>
                                     </div>
-                                )}
-                            </div>
-                        ))}
+                                    <div className={!isDefaultCard ? "md:col-span-3" : "md:col-span-4"}>
+                                        <CertificateFileInput
+                                            fileName={prize.file}
+                                            onFileChange={(file) => handleCertificateChange(index, file)}
+                                        />
+                                    </div>
+                                    {!isDefaultCard && (
+                                        <div className="md:col-span-1 flex justify-end items-center pt-2 md:pt-4">
+                                            <button
+                                                type="button"
+                                                onClick={() => handleRemovePrize(index)}
+                                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-md transition-colors cursor-pointer"
+                                                title="Remove Prize Category"
+                                            >
+                                                <TrashIcon />
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
                     </div>
 
                     <button
