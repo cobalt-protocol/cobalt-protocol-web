@@ -32,7 +32,7 @@ export function SiteHeader() {
   } = useSiteActions()
 
   return (
-    <header className="border-b border-border/30 bg-white">
+    <header className="sticky top-0 z-50 border-b border-border/30 bg-white/95 backdrop-blur-md transition-all">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-5 md:px-10">
         <Brand />
         <nav

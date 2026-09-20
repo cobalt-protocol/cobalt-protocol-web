@@ -14,7 +14,7 @@ const NavBar = () => {
 
     return (
         <>
-            <nav className="h-17.5 relative w-full px-6 md:px-16 lg:px-24 xl:px-32 flex items-center justify-between z-30 bg-white transition-all">
+            <nav className="sticky top-0 z-50 h-17.5 w-full px-6 md:px-16 lg:px-24 xl:px-32 flex items-center justify-between bg-white/95 backdrop-blur-md transition-all">
                 {/* Logo */}
                 <a href="/">
                     <Image
