@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useRef } from 'react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
+import { Input } from '@workspace/ui/components/input';
 
 // --- KUMPULAN IKON SVG ---
 const InfoIcon = () => (
@@ -166,29 +167,37 @@ const DateCard = ({
     onEndChange,
     icon,
 }: DateCardProps) => (
-    <div className="bg-[#EFF4FF] rounded-lg p-4 flex flex-col justify-between">
-        <div className="flex items-center space-x-2 mb-3">
-            {icon}
-            <h4 className="text-sm font-semibold text-slate-700">{title}</h4>
+    <div className="bg-[#EFF4FF] rounded-xl p-4 border border-blue-100/80 shadow-xs flex flex-col justify-between">
+        <div className="flex items-center space-x-2.5 mb-3.5">
+            <div className="p-1.5 bg-white rounded-lg text-blue-600 shadow-xs">
+                {icon}
+            </div>
+            <h4 className="text-sm font-bold text-slate-800">{title}</h4>
         </div>
         <div className={`grid ${endLabel && endDateValue !== undefined ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'} gap-3 text-xs`}>
-            <div>
-                <label className="block text-slate-400 mb-1 font-medium text-[10px] uppercase">{startLabel}</label>
-                <input
+            <div className="bg-white/90 p-2.5 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
+                <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider flex items-center gap-1.5">
+                    <CalendarIconLucide className="w-3 h-3 text-blue-500 shrink-0" />
+                    {startLabel}
+                </label>
+                <Input
                     type="datetime-local"
                     value={startDateValue}
                     onChange={(e) => onStartChange(e.target.value)}
-                    className="w-full bg-white/80 focus:bg-white text-slate-700 text-xs py-1.5 px-2 rounded border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium transition-colors"
+                    className="h-8 bg-transparent text-slate-800 text-xs border-0 p-0 focus-visible:ring-0 focus-visible:border-transparent font-medium cursor-pointer"
                 />
             </div>
             {endLabel && endDateValue !== undefined && onEndChange && (
-                <div>
-                    <label className="block text-slate-400 mb-1 font-medium text-[10px] uppercase">{endLabel}</label>
-                    <input
+                <div className="bg-white/90 p-2.5 rounded-lg border border-slate-200/80 hover:border-blue-300 transition-colors">
+                    <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1 tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3 h-3 text-blue-500 shrink-0" />
+                        {endLabel}
+                    </label>
+                    <Input
                         type="datetime-local"
                         value={endDateValue}
                         onChange={(e) => onEndChange(e.target.value)}
-                        className="w-full bg-white/80 focus:bg-white text-slate-700 text-xs py-1.5 px-2 rounded border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 font-medium transition-colors"
+                        className="h-8 bg-transparent text-slate-800 text-xs border-0 p-0 focus-visible:ring-0 focus-visible:border-transparent font-medium cursor-pointer"
                     />
                 </div>
             )}
