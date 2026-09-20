@@ -19,6 +19,12 @@ import {
 import { useState, type FormEvent } from "react"
 import { skillLevels, type BuilderProfile, type SkillLevel } from "../types"
 
+function formatAddress(addr?: string) {
+  if (!addr) return "0x..."
+  if (addr.length <= 11) return addr
+  return `${addr.slice(0, 6)}...${addr.slice(-5)}`
+}
+
 export function ProfileEditor({
   initialProfile,
   onSave,
@@ -33,7 +39,10 @@ export function ProfileEditor({
   const [skillName, setSkillName] = useState("")
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
-  const { openWallet, connected, disconnectWallet } = useSiteActions()
+  const { openWallet, connected, disconnectWallet, address, chainName } =
+    useSiteActions()
+  const isTestnet = chainName ? chainName.toLowerCase().includes("testnet") : true
+  const networkType = isTestnet ? "Testnet" : "Mainnet"
   function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     const next = {
@@ -124,24 +133,35 @@ export function ProfileEditor({
         <Panel>
           <div className="flex justify-between gap-2">
             <h2 className="text-xs font-semibold uppercase">
-              Web3 settlement vault
+              Web3 Wallet
             </h2>
             <Badge tone={connected ? "green" : "neutral"}>
-              {connected ? "Connected · Preview" : "Not connected"}
+              {connected ? `Connected · ${networkType}` : "Not connected"}
             </Badge>
           </div>
-          <div className="my-5 rounded-xl bg-secondary/60 p-4">
-            <p className="text-xs">Arbitrum One</p>
-            <p className="mt-3 text-sm font-bold">
-              {connected
-                ? "Wallet connected in preview mode"
-                : "Connect your wallet to view vault"}
-            </p>
+          <div className="my-5 rounded-xl bg-secondary/60 p-4 space-y-3">
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Network Name</p>
+              <p className="mt-0.5 text-sm font-bold">
+                {connected ? (chainName || "BotChain Testnet") : "Not connected"}
+              </p>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground font-medium">Wallet Address</p>
+              <p className="mt-0.5 text-sm font-bold font-mono" title={address}>
+                {connected ? formatAddress(address) : "Not connected"}
+              </p>
+            </div>
           </div>
           <Button
             type="button"
             onClick={connected ? disconnectWallet : openWallet}
-            className="h-10 w-full"
+            variant={connected ? "destructive" : "default"}
+            className={
+              connected
+                ? "h-10 w-full bg-red-600 text-white hover:bg-red-700 font-medium"
+                : "h-10 w-full"
+            }
           >
             {connected ? "Disconnect Wallet" : "Connect Wallet"}
           </Button>
