@@ -1,11 +1,13 @@
 "use client"
 import { createContext, useContext, useState, type ReactNode } from "react"
+import { useAccount, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
 import { Button } from "@workspace/ui/components/button"
 import { Modal } from "@/components/ui/modal"
 import { WalletOnboardingDialog } from "@/features/registration/components/wallet-onboarding-dialog"
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
+import { botChainTestnet } from "@/lib/wagmi"
 import {
   isBuilderProfile,
   mockProfile,
@@ -34,6 +36,10 @@ interface SiteActions {
   openWallet: () => void
   showNotice: (message: string) => void
   connected: boolean
+  address?: string
+  chainName?: string
+  isWrongNetwork?: boolean
+  switchNetwork?: () => void
   disconnectWallet: () => void
   register: (
     competition: RegistrationCompetition,
@@ -49,13 +55,22 @@ export function useSiteActions(): SiteActions {
 }
 export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
+
+  const { address, isConnected: isWagmiConnected, chain } = useAccount()
+  const { connectors, connectAsync } = useConnect()
+  const { disconnectAsync } = useDisconnect()
+  const chainId = useChainId()
+  const { switchChainAsync } = useSwitchChain()
+
+  const isWrongNetwork = Boolean(isWagmiConnected && chainId !== botChainTestnet.id)
+
   const { value: storedConnected, save: saveConnected } = useBrowserDraft(
     "cobalt:wallet-preview:v1",
     false,
     isBoolean
   )
   const [sessionConnected, setSessionConnected] = useState<boolean | null>(null)
-  const connected = sessionConnected ?? storedConnected
+  const connected = isWagmiConnected || (sessionConnected ?? storedConnected)
   const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
     profileStorageKey,
     null,
@@ -79,10 +94,59 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     setDialog(null)
     router.push(href)
   }
-  function disconnectWallet() {
+  async function handleOpenWallet() {
+    if (connected) {
+      if (isWrongNetwork) {
+        try {
+          await switchChainAsync({ chainId: botChainTestnet.id })
+        } catch {
+          setNotice(`Please switch your wallet network to ${botChainTestnet.name}.`)
+        }
+      } else {
+        setNotice("Your wallet is connected to " + (chain?.name ?? botChainTestnet.name) + ".")
+      }
+      return
+    }
+
+    const connector = connectors.find((c) => c.id === "metaMask") || connectors[0]
+    if (connector) {
+      try {
+        await connectAsync({ connector, chainId: botChainTestnet.id })
+        const competition = dialog?.competition ?? null
+        if (!isProfileComplete(savedProfile)) {
+          setDialog({ kind: "profile", competition })
+        } else if (competition) {
+          continueRegistration(competition, true, savedProfile)
+        } else {
+          setDialog(null)
+        }
+        return
+      } catch {
+        // Fall back to onboarding dialog
+      }
+    }
+    setWalletOpen(true)
+  }
+
+  async function handleDisconnectWallet() {
+    if (isWagmiConnected) {
+      try {
+        await disconnectAsync()
+      } catch {
+        // Ignore disconnect errors
+      }
+    }
     setSessionConnected(saveConnected(false) ? null : false)
     setDialog(null)
     setNotice(null)
+  }
+
+  async function handleSwitchNetwork() {
+    try {
+      await switchChainAsync({ chainId: botChainTestnet.id })
+    } catch {
+      setNotice(`Could not switch network automatically. Please switch to ${botChainTestnet.name} in your wallet.`)
+    }
   }
   function register(
     competition: RegistrationCompetition,
@@ -163,13 +227,14 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   return (
     <SiteActionsContext.Provider
       value={{
-        openWallet: () => {
-          if (!connected) setWalletOpen(true)
-          else setNotice("Your wallet is connected in preview mode.")
-        },
+        openWallet: handleOpenWallet,
         showNotice: setNotice,
         connected,
-        disconnectWallet,
+        address: address ? String(address) : undefined,
+        chainName: chain?.name,
+        isWrongNetwork,
+        switchNetwork: handleSwitchNetwork,
+        disconnectWallet: handleDisconnectWallet,
         register,
         joinTeam,
       }}

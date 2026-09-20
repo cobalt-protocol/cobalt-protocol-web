@@ -5,6 +5,7 @@ import { ThemeProvider } from "@/components/theme-provider"
 import { SiteHeader } from "@/components/layout/site-header"
 import { SiteFooter } from "@/components/layout/site-footer"
 import { SiteActionsProvider } from "@/components/layout/site-actions"
+import { Web3Provider } from "@/providers/web3-provider"
 import { cn } from "@workspace/ui/lib/utils"
 
 const manrope = Manrope({
@@ -37,21 +38,24 @@ export default function RootLayout({
     >
       <body>
         <ThemeProvider forcedTheme="light" enableSystem={false}>
-          <SiteActionsProvider>
-            <a
-              href="#main"
-              className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-white focus:p-3"
-            >
-              Skip to content
-            </a>
-            <SiteHeader />
-            <main id="main" className="min-h-[65vh]">
-              {children}
-            </main>
-            <SiteFooter />
-          </SiteActionsProvider>
+          <Web3Provider>
+            <SiteActionsProvider>
+              <a
+                href="#main"
+                className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-2 focus:z-50 focus:rounded focus:bg-white focus:p-3"
+              >
+                Skip to content
+              </a>
+              <SiteHeader />
+              <main id="main" className="min-h-[65vh]">
+                {children}
+              </main>
+              <SiteFooter />
+            </SiteActionsProvider>
+          </Web3Provider>
         </ThemeProvider>
       </body>
     </html>
   )
 }
+
