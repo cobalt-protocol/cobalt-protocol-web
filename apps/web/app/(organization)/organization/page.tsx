@@ -132,7 +132,7 @@ export default function CompetitionListPage() {
                         <p className="text-[#434655]">
                             View, search, and manage competitions you have created.
                         </p>
-                        <Link href="/organization/create">
+                        <Link href="/competition/create">
                             <Button
                                 variant="outline"
                                 className="text-white bg-[#2563EB]! font-normal px-8 py-5 flex flex-row items-center"
