@@ -6,7 +6,7 @@ import { Modal } from "@/components/ui/modal"
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
-import { botChainTestnet, addBotChainTestnetToWallet } from "@/lib/wagmi"
+import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly } from "@/lib/wagmi"
 import {
   isBuilderProfile,
   mockProfile,
@@ -110,6 +110,10 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     setIsConnecting(true)
 
     try {
+      // 1. Direct call to MetaMask API guaranteeing account & network switch popups
+      await connectMetaMaskDirectly()
+
+      // 2. Sync Wagmi status
       const targetConnector =
         connectors.find((c) => c.id === "metaMask" || c.name.toLowerCase().includes("metamask")) ||
         connectors.find((c) => c.id === "injected") ||
@@ -119,19 +123,8 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         try {
           await connectAsync({ connector: targetConnector })
         } catch (wagmiErr: any) {
-          if (wagmiErr?.code === 4001 || wagmiErr?.message?.includes("rejected")) {
-            return
-          }
-          await (window as any).ethereum.request({ method: "eth_requestAccounts" })
+          console.log("Wagmi sync status:", wagmiErr)
         }
-      } else {
-        await (window as any).ethereum.request({ method: "eth_requestAccounts" })
-      }
-
-      try {
-        await switchChainAsync({ chainId: botChainTestnet.id })
-      } catch {
-        await addBotChainTestnetToWallet()
       }
 
       const competition = dialog?.competition ?? null
