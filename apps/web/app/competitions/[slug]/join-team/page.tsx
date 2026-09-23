@@ -9,13 +9,14 @@ import { JoinTeamPage } from "@/features/teams/components/join-team-page"
 interface PageProps {
   params: Promise<{ slug: string }>
 }
-export function generateStaticParams() {
-  return getCompetitions().map(({ slug }) => ({ slug }))
+export async function generateStaticParams() {
+  const competitions = await getCompetitions()
+  return competitions.map(({ slug }) => ({ slug }))
 }
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
-  const competition = getCompetitionBySlug((await params).slug)
+  const competition = await getCompetitionBySlug((await params).slug)
   return {
     title: competition
       ? `Join a Team · ${competition.title} | Cobalt Protocol`
@@ -23,7 +24,7 @@ export async function generateMetadata({
   }
 }
 export default async function Page({ params }: PageProps) {
-  const competition = getCompetitionBySlug((await params).slug)
+  const competition = await getCompetitionBySlug((await params).slug)
   if (!competition) notFound()
   return <JoinTeamPage competition={competition} />
 }

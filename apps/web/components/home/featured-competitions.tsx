@@ -1,27 +1,35 @@
 "use client"
 import { useState } from "react"
 import Link from "next/link"
-import { ArrowRight, Flame } from "lucide-react"
+import { ArrowRight, Flame, FolderX, Loader2 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { CompetitionCard } from "@/features/competitions/components/competition-card"
 import {
   competitionCategories,
-  type Competition,
   type CompetitionCategory,
 } from "@/features/competitions/types"
+import { fetchCompetitions } from "@/lib/competitions-api"
 import { routes } from "@/lib/routes"
+
 export function FeaturedCompetitions({
-  competitions,
-  total,
   referenceDate,
 }: {
-  competitions: readonly Competition[]
-  total: number
   referenceDate: string
 }) {
   const [category, setCategory] = useState<CompetitionCategory | "All">("All")
-  const filtered = competitions.filter(
+
+  const { data: competitions = [], isLoading } = useQuery({
+    queryKey: ["competitions"],
+    queryFn: fetchCompetitions,
+  })
+
+  const featured = competitions.slice(0, 3)
+  const totalCount = competitions.length
+
+  const filtered = featured.filter(
     (item) => category === "All" || item.category === category
   )
+
   return (
     <section className="bg-white py-12" id="competitions">
       <div className="mx-auto max-w-7xl px-5 md:px-10">
@@ -52,29 +60,49 @@ export function FeaturedCompetitions({
             ))}
           </div>
         </div>
-        <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-          {filtered.map((competition) => (
-            <CompetitionCard
-              key={competition.id}
-              competition={competition}
-              referenceDate={referenceDate}
-            />
-          ))}
-        </div>
-        {filtered.length === 0 && (
-          <p className="rounded-xl bg-slate-50 p-10 text-center text-muted-foreground">
-            No featured competitions in this category. Explore the full
-            directory below.
-          </p>
+
+        {isLoading ? (
+          <div className="flex items-center justify-center py-16 text-muted-foreground">
+            <Loader2 className="mr-2 h-6 w-6 animate-spin text-primary" />
+            <span>Loading competitions from API...</span>
+          </div>
+        ) : competitions.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50/50 py-16 text-center">
+            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <FolderX size={28} />
+            </div>
+            <h3 className="text-lg font-bold text-foreground">No Competitions Found</h3>
+            <p className="mt-1 text-sm text-muted-foreground">
+              There are currently no active competitions available. Please check back later.
+            </p>
+          </div>
+        ) : (
+          <>
+            <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+              {filtered.map((competition) => (
+                <CompetitionCard
+                  key={competition.id}
+                  competition={competition}
+                  referenceDate={referenceDate}
+                />
+              ))}
+            </div>
+            {filtered.length === 0 && (
+              <p className="rounded-xl bg-slate-50 p-10 text-center text-muted-foreground">
+                No featured competitions in this category. Explore the full
+                directory below.
+              </p>
+            )}
+            <div className="mt-9 text-center">
+              <Link
+                href={routes.competitions}
+                className="inline-flex items-center gap-2 rounded-lg bg-secondary px-5 py-3 text-sm font-bold text-primary"
+              >
+                View All {totalCount} Competitions <ArrowRight size={16} />
+              </Link>
+            </div>
+          </>
         )}
-        <div className="mt-9 text-center">
-          <Link
-            href={routes.competitions}
-            className="inline-flex items-center gap-2 rounded-lg bg-secondary px-5 py-3 text-sm font-bold text-primary"
-          >
-            View All {total} Competitions <ArrowRight size={16} />
-          </Link>
-        </div>
       </div>
     </section>
   )

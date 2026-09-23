@@ -1,7 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@workspace/ui/components/button";
 import { Input } from "@workspace/ui/components/input";
 import { Badge } from "@workspace/ui/components/badge";
@@ -17,7 +18,8 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@workspace/ui/components/select";
-import { Plus, Search, Calendar, ArrowRight } from "lucide-react";
+import { Plus, Search, Calendar, ArrowRight, Loader2 } from "lucide-react";
+import { fetchApiCompetitions, getStoredToken, type ApiCompetition } from "@/lib/competitions-api";
 
 // --- Tipe ---
 type CompetitionStatus =
@@ -29,8 +31,8 @@ type CompetitionStatus =
 type StatusFilter = CompetitionStatus | "all";
 type CategoryFilter = string;
 
-interface Competition {
-    id: number;
+interface OrganizationCompetition {
+    id: string;
     category: string;
     status: CompetitionStatus;
     title: string;
@@ -38,10 +40,10 @@ interface Competition {
     prize: string;
 }
 
-// --- Data ---
-const competitions: Competition[] = [
+// --- Data Fallback ---
+const fallbackCompetitions: OrganizationCompetition[] = [
     {
-        id: 1,
+        id: "1",
         category: "UI/UX Design",
         status: "Submission",
         title: "Autonomous Agents Global Hackathon 2025",
@@ -49,7 +51,7 @@ const competitions: Competition[] = [
         prize: "$75,000 USDC",
     },
     {
-        id: 2,
+        id: "2",
         category: "Web3 & Cryptography",
         status: "Judging",
         title: "Zero-Knowledge Financial Privacy Challenge",
@@ -57,15 +59,15 @@ const competitions: Competition[] = [
         prize: "$50,000 USDC",
     },
     {
-        id: 3,
+        id: "3",
         category: "DeFi & UX",
         status: "Registration",
         title: "NextGen DeFiUX & Account Abstraction",
-        date: "Registration: May 01 - Jun 15, 2025",
+        date: "Apr 01 - Jun 15, 2025",
         prize: "$30,000 USDC",
     },
     {
-        id: 4,
+        id: "4",
         category: "ClimateTech",
         status: "Completed",
         title: "Verifiable Carbon Ledger Track",
@@ -101,18 +103,97 @@ const STATUS_OPTIONS: CompetitionStatus[] = [
     "Completed",
 ];
 
+function formatDates(comp: ApiCompetition): string {
+    const fmt = (dateStr?: string) => {
+        if (!dateStr) return "";
+        try {
+            const d = new Date(dateStr);
+            if (isNaN(d.getTime())) return dateStr;
+            return d.toLocaleDateString("en-US", { month: "short", day: "2-digit" });
+        } catch {
+            return dateStr;
+        }
+    };
+    const start = fmt(comp.competition_window || comp.registration_window);
+    const end = fmt(comp.submission_deadline || comp.result_announcement);
+    if (start && end) {
+        const year = new Date(comp.submission_deadline || comp.registration_window || Date.now()).getFullYear();
+        return `${start} - ${end}, ${year}`;
+    }
+    if (start) return `Starts ${start}`;
+    return "TBA";
+}
+
+function determineStatus(comp: ApiCompetition): CompetitionStatus {
+    const now = new Date();
+    const subDeadline = comp.submission_deadline ? new Date(comp.submission_deadline) : null;
+    const judgingReview = comp.judging_review ? new Date(comp.judging_review) : null;
+    const regWindow = comp.registration_window ? new Date(comp.registration_window) : null;
+
+    if (subDeadline && now > subDeadline) {
+        if (judgingReview && now > judgingReview) {
+            return "Completed";
+        }
+        return "Judging";
+    }
+    if (regWindow && now > regWindow) {
+        return "Submission";
+    }
+    return "Registration";
+}
+
+function formatPrize(comp: ApiCompetition): string {
+    if (comp.prize_winners && comp.prize_winners.length > 0) {
+        const total = comp.prize_winners.reduce((acc, w) => acc + (w.prize_amount || 0), 0);
+        if (total > 0) {
+            return `$${total.toLocaleString("en-US")} USDC`;
+        }
+    }
+    return "$50,000 USDC";
+}
+
 export default function CompetitionListPage() {
     const [search, setSearch] = useState<string>("");
     const [status, setStatus] = useState<StatusFilter>("all");
     const [category, setCategory] = useState<CategoryFilter>("all");
+    const [storedToken, setStoredToken] = useState<string | null>(null);
+
+    useEffect(() => {
+        setStoredToken(getStoredToken());
+    }, []);
+
+    const { data: apiCompetitions, isLoading } = useQuery({
+        queryKey: ["organization-competitions", storedToken],
+        queryFn: () => {
+            const token = storedToken || getStoredToken();
+            return fetchApiCompetitions(token || undefined);
+        },
+    });
+
+    const competitionsList = useMemo<OrganizationCompetition[]>(() => {
+        if (apiCompetitions && apiCompetitions.length > 0) {
+            return apiCompetitions.map((comp) => ({
+                id: comp.id,
+                category: comp.category || "General",
+                status: determineStatus(comp),
+                title: comp.name || "Untitled Competition",
+                date: formatDates(comp),
+                prize: formatPrize(comp),
+            }));
+        }
+        if (apiCompetitions && apiCompetitions.length === 0 && !isLoading) {
+            return [];
+        }
+        return fallbackCompetitions;
+    }, [apiCompetitions, isLoading]);
 
     const categories = useMemo<string[]>(
-        () => Array.from(new Set(competitions.map((c) => c.category))),
-        []
+        () => Array.from(new Set(competitionsList.map((c) => c.category))),
+        [competitionsList]
     );
 
-    const filtered = useMemo<Competition[]>(() => {
-        return competitions.filter((c) => {
+    const filtered = useMemo<OrganizationCompetition[]>(() => {
+        return competitionsList.filter((c) => {
             const matchSearch =
                 c.title.toLowerCase().includes(search.toLowerCase()) ||
                 c.category.toLowerCase().includes(search.toLowerCase());
@@ -120,7 +201,7 @@ export default function CompetitionListPage() {
             const matchCategory = category === "all" || c.category === category;
             return matchSearch && matchStatus && matchCategory;
         });
-    }, [search, status, category]);
+    }, [competitionsList, search, status, category]);
 
     return (
         <div className="w-full bg-[#E5EEFF] py-10">
@@ -198,72 +279,80 @@ export default function CompetitionListPage() {
                 </div>
 
                 {/* Grid */}
-                <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {filtered.map((comp) => {
-                        const style = statusStyles[comp.status];
-                        return (
-                            <Card
-                                key={comp.id}
-                                className="flex flex-col justify-between shadow-none border-0 ring-0 bg-white"
-                            >
-                                <CardHeader className="pb-4">
-                                    <div className="flex justify-between items-start mb-4">
-                                        <Badge
-                                            variant="secondary"
-                                            className="bg-[#F1F5F9] text-[#475569] font-normal hover:bg-[#F1F5F9]"
-                                        >
-                                            {comp.category}
-                                        </Badge>
-                                        <Badge
-                                            variant="secondary"
-                                            className={`${style.badge} font-medium flex items-center gap-1.5 px-2 py-0.5`}
-                                        >
-                                            <span
-                                                className={`h-1.5 w-1.5 rounded-full ${style.dot}`}
-                                            />
-                                            {comp.status}
-                                        </Badge>
-                                    </div>
+                {isLoading ? (
+                    <div className="flex items-center justify-center py-20">
+                        <Loader2 className="h-8 w-8 animate-spin text-[#2563EB]" />
+                    </div>
+                ) : (
+                    <div className="mt-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {filtered.map((comp) => {
+                            const style = statusStyles[comp.status] || statusStyles.Submission;
+                            return (
+                                <Card
+                                    key={comp.id}
+                                    className="flex flex-col justify-between shadow-none border-0 ring-0 bg-white"
+                                >
+                                    <CardHeader className="pb-4">
+                                        <div className="flex justify-between items-start mb-4">
+                                            <Badge
+                                                variant="secondary"
+                                                className="bg-[#F1F5F9] text-[#475569] font-normal hover:bg-[#F1F5F9]"
+                                            >
+                                                {comp.category}
+                                            </Badge>
+                                            <Badge
+                                                variant="secondary"
+                                                className={`${style.badge} font-medium flex items-center gap-1.5 px-2 py-0.5`}
+                                            >
+                                                <span
+                                                    className={`h-1.5 w-1.5 rounded-full ${style.dot}`}
+                                                />
+                                                {comp.status}
+                                            </Badge>
+                                        </div>
 
-                                    <h3 className="text-lg font-bold text-slate-900 leading-tight">
-                                        {comp.title}
-                                    </h3>
+                                        <h3 className="text-lg font-bold text-slate-900 leading-tight">
+                                            {comp.title}
+                                        </h3>
 
-                                    <div className="flex items-center text-sm text-slate-500 mt-2">
-                                        <Calendar className="h-3.5 w-3.5 mr-1.5" />
-                                        {comp.date}
-                                    </div>
-                                </CardHeader>
+                                        <div className="flex items-center text-sm text-slate-500 mt-2">
+                                            <Calendar className="h-3.5 w-3.5 mr-1.5" />
+                                            {comp.date}
+                                        </div>
+                                    </CardHeader>
 
-                                <CardFooter className="flex flex-col gap-3 border-0 bg-[#EFF4FF]/40 p-4 rounded-b-xl">
-                                    <div className="flex flex-row justify-between items-center w-full">
-                                        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                                            Prize Pool
-                                        </span>
-                                        <span className="text-xl font-bold text-slate-900">
-                                            {comp.prize}
-                                        </span>
-                                    </div>
-                                    <div className="w-full rounded-lg p-2.5 bg-white flex items-center justify-between">
-                                        <Button
-                                            variant="link"
-                                            className="w-full px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex flex-row items-center justify-between h-auto"
-                                        >
-                                            <span>View Competition Detail</span>
-                                            <ArrowRight className="h-4 w-4" />
-                                        </Button>
-                                    </div>
-                                </CardFooter>
-                            </Card>
-                        );
-                    })}
+                                    <CardFooter className="flex flex-col gap-3 border-0 bg-[#EFF4FF]/40 p-4 rounded-b-xl">
+                                        <div className="flex flex-row justify-between items-center w-full">
+                                            <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                                                Prize Pool
+                                            </span>
+                                            <span className="text-xl font-bold text-slate-900">
+                                                {comp.prize}
+                                            </span>
+                                        </div>
+                                        <div className="w-full rounded-lg p-2.5 bg-white flex items-center justify-between">
+                                            <Link href={`/competition/${comp.id}`} className="w-full">
+                                                <Button
+                                                    variant="link"
+                                                    className="w-full px-0 text-[#2563EB] hover:text-[#1D4ED8] font-medium flex flex-row items-center justify-between h-auto"
+                                                >
+                                                    <span>View Competition Detail</span>
+                                                    <ArrowRight className="h-4 w-4" />
+                                                </Button>
+                                            </Link>
+                                        </div>
+                                    </CardFooter>
+                                </Card>
+                            );
+                        })}
 
-                    {filtered.length === 0 && (
-                        <p className="col-span-full text-center text-slate-500 py-12">
-                            No competitions found.
-                        </p>
-                    )}
-                </div>
+                        {filtered.length === 0 && (
+                            <p className="col-span-full text-center text-slate-500 py-12">
+                                No competitions found.
+                            </p>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -8,14 +8,15 @@ import { CompetitionDetail } from "@/features/competitions/components/competitio
 interface PageProps {
   params: Promise<{ slug: string }>
 }
-export function generateStaticParams() {
-  return getCompetitions().map(({ slug }) => ({ slug }))
+export async function generateStaticParams() {
+  const competitions = await getCompetitions()
+  return competitions.map(({ slug }) => ({ slug }))
 }
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const competition = getCompetitionBySlug(slug)
+  const competition = await getCompetitionBySlug(slug)
   return {
     title: competition
       ? `${competition.title} | Cobalt Protocol`
@@ -24,7 +25,7 @@ export async function generateMetadata({
 }
 export default async function CompetitionPage({ params }: PageProps) {
   const { slug } = await params
-  const competition = getCompetitionBySlug(slug)
+  const competition = await getCompetitionBySlug(slug)
   if (!competition) notFound()
   return <CompetitionDetail competition={competition} />
 }

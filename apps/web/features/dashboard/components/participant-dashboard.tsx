@@ -2,6 +2,8 @@
 import { Modal } from "@/components/ui/modal"
 import { primaryLinkClass } from "@/components/ui/page-primitives"
 import type { Competition } from "@/features/competitions/types"
+import { fetchCompetitions } from "@/lib/competitions-api"
+import { useQuery } from "@tanstack/react-query"
 import {
   isBuilderProfile,
   profileStorageKey,
@@ -37,11 +39,16 @@ import { JoinedCompetitionRow } from "./joined-competition-row"
 
 const isOptionalProfile = (value: unknown): value is BuilderProfile | null =>
   value === null || isBuilderProfile(value)
+
 export function ParticipantDashboard({
-  competitions,
+  competitions: initialCompetitions,
 }: {
-  competitions: readonly Competition[]
+  competitions?: readonly Competition[]
 }) {
+  const { data: competitions = initialCompetitions || [] } = useQuery({
+    queryKey: ["competitions"],
+    queryFn: fetchCompetitions,
+  })
   const router = useRouter()
   const { memberships } = useMemberships()
   const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(

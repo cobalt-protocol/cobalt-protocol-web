@@ -6,6 +6,8 @@ import {
   fieldClass,
 } from "@/components/ui/page-primitives"
 import { routes } from "@/lib/routes"
+import { fetchCompetitions } from "@/lib/competitions-api"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
 import { ChevronLeft, ChevronRight, Search, X } from "lucide-react"
 import { useState } from "react"
@@ -26,12 +28,17 @@ const initialFilters: CompetitionFilters = {
 }
 
 export function CompetitionDirectory({
-  competitions,
+  competitions: initialCompetitions,
   referenceDate,
 }: {
-  competitions: readonly Competition[]
+  competitions?: readonly Competition[]
   referenceDate: string
 }) {
+  const { data: competitions = initialCompetitions || [] } = useQuery({
+    queryKey: ["competitions"],
+    queryFn: fetchCompetitions,
+  })
+
   const [filters, setFilters] = useState<CompetitionFilters>(initialFilters)
   const [page, setPage] = useState(1)
   function updateFilters(changes: Partial<CompetitionFilters>) {

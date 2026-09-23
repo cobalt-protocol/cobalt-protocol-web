@@ -10,7 +10,7 @@ export default async function Page({
 }) {
   const { competition: slug, setup } = await searchParams
   const competition =
-    typeof slug === "string" ? getCompetitionBySlug(slug) : undefined
+    typeof slug === "string" ? await getCompetitionBySlug(slug) : undefined
   return (
     <ProfilePage resumeCompetition={competition} startEditing={setup === "1"} />
   )
