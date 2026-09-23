@@ -1,15 +1,15 @@
 import type { Metadata } from "next"
 import { CompetitionDirectory } from "@/features/competitions/components/competition-directory"
-import { getCompetitions } from "@/features/competitions/data/competition-repository"
-import { competitionPreviewDate } from "@/features/competitions/data/competitions"
+import { fetchPublicCompetitions } from "@/features/competitions/data/public-competition-api"
 export const metadata: Metadata = {
   title: "Discover Competitions | Cobalt Protocol",
 }
-export default function CompetitionsPage() {
+export default async function CompetitionsPage() {
+  const competitions = await fetchPublicCompetitions()
   return (
     <CompetitionDirectory
-      competitions={getCompetitions()}
-      referenceDate={competitionPreviewDate}
+      competitions={competitions}
+      referenceDate={new Date().toISOString()}
     />
   )
 }
