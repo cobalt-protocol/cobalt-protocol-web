@@ -1,6 +1,6 @@
 import { createConfig, http } from "wagmi"
 import { getDefaultConfig } from "connectkit"
-import { defineChain } from "viem"
+import { defineChain, createWalletClient, custom } from "viem"
 
 // Global trap for Object.defineProperty(window, 'ethereum') to prevent uncaught "Cannot redefine property: ethereum"
 if (typeof window !== "undefined") {
@@ -243,4 +243,35 @@ export async function addBotChainTestnetToWallet() {
   }
   return false
 }
+
+
+export async function signMessageWithViem(
+  address: string,
+  message: string
+): Promise<string> {
+  if (typeof window === "undefined") {
+    throw new Error("Browser environment not ready.")
+  }
+
+  const eth = (window as any).ethereum
+  if (!eth) {
+    throw new Error("No Web3 wallet extension found.")
+  }
+
+  const provider =
+    eth.providers && Array.isArray(eth.providers)
+      ? eth.providers.find((p: any) => p.isMetaMask || p.isPhantom || p.isRabby) || eth
+      : eth
+
+  const walletClient = createWalletClient({
+    chain: botChainTestnet,
+    transport: custom(provider),
+  })
+
+  return await walletClient.signMessage({
+    account: address as `0x${string}`,
+    message,
+  })
+}
+
 
