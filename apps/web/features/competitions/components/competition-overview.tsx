@@ -14,6 +14,7 @@ export function CompetitionOverview({
   competition: Competition
   workspace?: boolean
 }) {
+  const hasPrizeData = competition.prizes.length > 0
   return (
     <Panel className="grid items-center gap-8 bg-linear-to-br from-white to-blue-50/40 md:p-9 lg:grid-cols-[1.35fr_1fr]">
       <div>
@@ -69,11 +70,11 @@ export function CompetitionOverview({
       <div className="relative overflow-hidden rounded-xl bg-secondary/70 p-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-[10px] font-semibold text-muted-foreground uppercase">
-            Total guaranteed prize
+            {hasPrizeData ? "Total guaranteed prize" : "Prize information"}
           </p>
           <Badge tone="green">
             <LockKeyhole size={11} />
-            Escrow preview
+            {hasPrizeData ? "Escrow preview" : "Not connected"}
           </Badge>
         </div>
         <p className="mt-4 text-4xl font-extrabold tracking-tight text-primary sm:text-5xl">
@@ -83,9 +84,9 @@ export function CompetitionOverview({
           </span>
         </p>
         <p className="mt-3 text-xs leading-5 text-muted-foreground">
-          Pre-funded prize pool design for Arbitrum One. Escrow funding and
-          payout verification will appear here once the wallet integration is
-          available.
+          {hasPrizeData
+            ? "Escrow funding and payout verification will appear here once the wallet integration is available."
+            : "The organizer has not published a verified prize contract for this competition yet."}
         </p>
         <div className="mt-5 rounded-lg bg-white p-4">
           <div className="flex justify-between gap-3 text-xs">

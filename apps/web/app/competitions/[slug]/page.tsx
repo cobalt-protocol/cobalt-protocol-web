@@ -1,10 +1,6 @@
-import { notFound } from "next/navigation"
-import type { Metadata } from "next"
-import {
-  getCompetitionBySlug,
-  getCompetitions,
-} from "@/features/competitions/data/competition-repository"
 import { CompetitionDetail } from "@/features/competitions/components/competition-detail"
+import type { Metadata } from "next"
+import { notFound } from "next/navigation"
 interface PageProps {
   params: Promise<{ slug: string }>
 }
