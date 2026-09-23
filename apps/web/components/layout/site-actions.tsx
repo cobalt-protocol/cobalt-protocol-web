@@ -1,6 +1,6 @@
 "use client"
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
-import { useAccount, useBalance, useConnect, useDisconnect, useChainId, useSwitchChain } from "wagmi"
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react"
+import { useAccount, useBalance, useConnect, useDisconnect, useChainId, useSwitchChain, useSignMessage } from "wagmi"
 import { formatUnits } from "viem"
 import { useModal } from "connectkit"
 import { Button } from "@workspace/ui/components/button"
@@ -8,7 +8,8 @@ import { Modal } from "@/components/ui/modal"
 import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
-import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly } from "@/lib/wagmi"
+import { generateNonce, verifySignature, getMe, type User, type UserRole } from "@/lib/auth-api"
+import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly, signMessageWithViem } from "@/lib/wagmi"
 import {
   isBuilderProfile,
   mockProfile,
@@ -47,6 +48,18 @@ interface SiteActions {
     competition: RegistrationCompetition,
     profileOverride?: BuilderProfile
   ) => void
+  nonce?: string | null
+  nonceMessage?: string | null
+  isGeneratingNonce?: boolean
+  refetchNonce?: () => Promise<void>
+  signNonce?: () => Promise<string | null>
+  signature?: string | null
+  isSigningNonce?: boolean
+  sessionToken?: string | null
+  accessToken?: string | null
+  userRole?: UserRole | null
+  user?: User | null
+  isVerifyingSignature?: boolean
 }
 const SiteActionsContext = createContext<SiteActions | null>(null)
 export function useSiteActions(): SiteActions {
@@ -64,6 +77,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const chainId = useChainId()
   const { switchChainAsync } = useSwitchChain()
   const { setOpen: setConnectKitOpen } = useModal()
+  const { signMessageAsync, isPending: isSigningWagmi } = useSignMessage()
 
   const { value: storedConnected, save: saveConnected } = useBrowserDraft(
     "cobalt:wallet-preview:v1",
@@ -79,9 +93,211 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     return false
   })
 
-  const connected = !userDisconnected && (isWagmiConnected || Boolean(directAddress) || Boolean(sessionConnected ?? storedConnected))
+  const [sessionToken, setSessionToken] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return (
+        window.localStorage.getItem("accessToken") ||
+        window.localStorage.getItem("cobalt:access_token") ||
+        window.localStorage.getItem("cobalt:session_token")
+      )
+    }
+    return null
+  })
+  const [authenticatedAddress, setAuthenticatedAddress] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return window.localStorage.getItem("cobalt:authenticated_address")
+    }
+    return null
+  })
+  const [userRole, setUserRole] = useState<UserRole | null>(() => {
+    if (typeof window !== "undefined") {
+      return (window.localStorage.getItem("cobalt:user_role") as UserRole) || null
+    }
+    return null
+  })
+  const [user, setUser] = useState<User | null>(() => {
+    if (typeof window !== "undefined") {
+      const stored = window.localStorage.getItem("cobalt:user")
+      if (stored) {
+        try {
+          return JSON.parse(stored)
+        } catch {}
+      }
+    }
+    return null
+  })
+
   const effectiveAddress = !userDisconnected ? (address ? String(address) : directAddress ?? undefined) : undefined
+  const isAddressConnected = Boolean(!userDisconnected && (isWagmiConnected || Boolean(directAddress)))
+  const isSessionValid = Boolean(sessionToken) && Boolean(effectiveAddress && authenticatedAddress && authenticatedAddress.toLowerCase() === effectiveAddress.toLowerCase())
+  const connected = isAddressConnected && isSessionValid
   const isWrongNetwork = Boolean(!userDisconnected && isWagmiConnected && chainId !== botChainTestnet.id)
+
+  const [nonce, setNonce] = useState<string | null>(null)
+  const [nonceMessage, setNonceMessage] = useState<string | null>(null)
+  const [isGeneratingNonce, setIsGeneratingNonce] = useState<boolean>(false)
+  const [signature, setSignature] = useState<string | null>(null)
+  const [isSigningNonceState, setIsSigningNonceState] = useState<boolean>(false)
+  const isSigningNonce = isSigningWagmi || isSigningNonceState
+  const [isVerifyingSignature, setIsVerifyingSignature] = useState<boolean>(false)
+
+  const isAuthInProgressRef = useRef(false)
+
+  useEffect(() => {
+    if (sessionToken && connected && !userRole) {
+      getMe(sessionToken)
+        .then((res) => {
+          if (res.data?.user) {
+            const u = res.data.user
+            setUser(u)
+            if (u.role) {
+              setUserRole(u.role)
+              if (typeof window !== "undefined") {
+                window.localStorage.setItem("cobalt:user_role", u.role)
+                window.localStorage.setItem("cobalt:user", JSON.stringify(u))
+              }
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn("Could not fetch user profile:", err)
+        })
+    }
+  }, [sessionToken, connected, userRole])
+
+  // Wallet Connection Auth Flow:
+  // Connect Wallet -> Generate Nonce (API) -> Sign Message with Viem -> Verify Signature (API) -> Connection Complete
+  useEffect(() => {
+    if (!effectiveAddress || userDisconnected) {
+      return
+    }
+
+    const isAlreadyAuthenticated =
+      Boolean(sessionToken) &&
+      Boolean(authenticatedAddress) &&
+      authenticatedAddress?.toLowerCase() === effectiveAddress.toLowerCase()
+
+    if (isAlreadyAuthenticated) {
+      return
+    }
+
+    if (isAuthInProgressRef.current) {
+      return
+    }
+
+    let isMounted = true
+    isAuthInProgressRef.current = true
+
+    async function performAuthFlow() {
+      try {
+        setIsGeneratingNonce(true)
+
+        // Step 1: Generate nonce via API
+        const nonceRes = await generateNonce(effectiveAddress!)
+        if (!isMounted) return
+
+        const currentNonce = nonceRes.data.nonce
+        const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress!.toLowerCase()}\nNonce: ${currentNonce}`
+
+        setNonce(currentNonce)
+        setNonceMessage(nonceMsg)
+        setIsGeneratingNonce(false)
+
+        // Step 2: Sign message using viem along with nonce
+        setIsSigningNonceState(true)
+        let sig: string
+        try {
+          sig = await signMessageWithViem(effectiveAddress!, nonceMsg)
+        } catch (viemErr: any) {
+          const msg = String(viemErr?.message || "").toLowerCase()
+          if (viemErr?.code === 4001 || msg.includes("rejected") || msg.includes("user denied")) {
+            throw viemErr
+          }
+          sig = await signMessageAsync({ message: nonceMsg })
+        }
+
+        if (!isMounted) return
+        setSignature(sig)
+        setIsSigningNonceState(false)
+
+        // Step 3: Verify signature & nonce via API
+        setIsVerifyingSignature(true)
+        const verifyRes = await verifySignature({
+          walletAddress: effectiveAddress!,
+          signature: sig,
+          nonce: currentNonce,
+          message: nonceMsg,
+        })
+
+        if (!isMounted) return
+
+        if (verifyRes.data?.token) {
+          const token = verifyRes.data.token
+          const userObj = verifyRes.data.user
+          const role = userObj?.role || "user"
+          if (typeof window !== "undefined") {
+            window.localStorage.setItem("accessToken", token)
+            window.localStorage.setItem("cobalt:access_token", token)
+            window.localStorage.setItem("cobalt:session_token", token)
+            window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress!.toLowerCase())
+            window.localStorage.setItem("cobalt:user_role", role)
+            window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
+          }
+          setSessionToken(token)
+          setAuthenticatedAddress(effectiveAddress!.toLowerCase())
+          setUserRole(role)
+          setUser(userObj)
+          console.log("Connect wallet berhasil! Session authenticated via viem & API verification for:", effectiveAddress, "Role:", role)
+        } else {
+          throw new Error("Verifikasi signature gagal.")
+        }
+      } catch (err: any) {
+        if (!isMounted) return
+        console.error("Auth flow failed during wallet connect:", err)
+        const errMsg = String(err?.message || "").toLowerCase()
+        if (err?.code === 4001 || errMsg.includes("rejected") || errMsg.includes("user denied")) {
+          setNotice("Koneksi dompet dibatalkan: Tanda tangan pesan ditolak.")
+        } else {
+          setNotice(`Gagal verifikasi dompet: ${err?.message || "Kesalahan verifikasi"}`)
+        }
+
+        // Abort wallet connection on failure so it doesn't state as connected
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("cobalt:disconnected", "true")
+          window.localStorage.removeItem("accessToken")
+          window.localStorage.removeItem("cobalt:access_token")
+          window.localStorage.removeItem("cobalt:session_token")
+          window.localStorage.removeItem("cobalt:authenticated_address")
+          window.localStorage.removeItem("cobalt:user_role")
+          window.localStorage.removeItem("cobalt:user")
+        }
+        setSessionToken(null)
+        setAuthenticatedAddress(null)
+        setUserRole(null)
+        setUser(null)
+        setUserDisconnected(true)
+        setDirectAddress(null)
+        try {
+          await disconnectMetaMaskDirectly()
+          if (isWagmiConnected) await disconnectAsync()
+        } catch {}
+      } finally {
+        if (isMounted) {
+          setIsGeneratingNonce(false)
+          setIsSigningNonceState(false)
+          setIsVerifyingSignature(false)
+        }
+        isAuthInProgressRef.current = false
+      }
+    }
+
+    performAuthFlow()
+
+    return () => {
+      isMounted = false
+      isAuthInProgressRef.current = false
+    }
+  }, [effectiveAddress, userDisconnected, sessionToken, authenticatedAddress, isWagmiConnected, signMessageAsync, disconnectAsync])
 
   const { data: balanceData } = useBalance({
     address:
@@ -189,7 +405,20 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   async function handleDisconnectWallet() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("cobalt:disconnected", "true")
+      window.localStorage.removeItem("accessToken")
+      window.localStorage.removeItem("cobalt:access_token")
+      window.localStorage.removeItem("cobalt:session_token")
+      window.localStorage.removeItem("cobalt:authenticated_address")
+      window.localStorage.removeItem("cobalt:user_role")
+      window.localStorage.removeItem("cobalt:user")
     }
+    setSessionToken(null)
+    setAuthenticatedAddress(null)
+    setUserRole(null)
+    setUser(null)
+    setNonce(null)
+    setNonceMessage(null)
+    setSignature(null)
     setUserDisconnected(true)
 
     // 1. Hard disconnect: revoke eth_accounts permission from MetaMask extension
@@ -300,6 +529,100 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         disconnectWallet: handleDisconnectWallet,
         register,
         joinTeam,
+        nonce,
+        nonceMessage,
+        isGeneratingNonce,
+        signature,
+        isSigningNonce,
+        sessionToken,
+        accessToken: sessionToken,
+        userRole,
+        user,
+        isVerifyingSignature,
+        signNonce: async () => {
+          let messageToSign = nonceMessage
+          let currentNonce = nonce
+          if (!messageToSign && effectiveAddress) {
+            setIsGeneratingNonce(true)
+            try {
+              const nonceRes = await generateNonce(effectiveAddress)
+              currentNonce = nonceRes.data.nonce
+              messageToSign = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress.toLowerCase()}\nNonce: ${currentNonce}`
+              setNonce(currentNonce)
+              setNonceMessage(messageToSign)
+            } finally {
+              setIsGeneratingNonce(false)
+            }
+          }
+          if (!messageToSign || !effectiveAddress) {
+            throw new Error("No nonce message available to sign")
+          }
+          setIsSigningNonceState(true)
+          let sig: string
+          try {
+            sig = await signMessageWithViem(effectiveAddress, messageToSign)
+          } catch (viemErr: any) {
+            const msg = String(viemErr?.message || "").toLowerCase()
+            if (viemErr?.code === 4001 || msg.includes("rejected") || msg.includes("user denied")) {
+              setIsSigningNonceState(false)
+              throw viemErr
+            }
+            sig = await signMessageAsync({ message: messageToSign })
+          }
+          setSignature(sig)
+          setIsSigningNonceState(false)
+
+          if (effectiveAddress) {
+            setIsVerifyingSignature(true)
+            try {
+              const verifyRes = await verifySignature({
+                walletAddress: effectiveAddress,
+                signature: sig,
+                nonce: currentNonce || undefined,
+                message: messageToSign,
+              })
+              if (verifyRes.data?.token) {
+                const token = verifyRes.data.token
+                const userObj = verifyRes.data.user
+                const role = userObj?.role || "user"
+                if (typeof window !== "undefined") {
+                  window.localStorage.setItem("accessToken", token)
+                  window.localStorage.setItem("cobalt:access_token", token)
+                  window.localStorage.setItem("cobalt:session_token", token)
+                  window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress.toLowerCase())
+                  window.localStorage.setItem("cobalt:user_role", role)
+                  window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
+                }
+                setSessionToken(token)
+                setAuthenticatedAddress(effectiveAddress.toLowerCase())
+                setUserRole(role)
+                setUser(userObj)
+              }
+            } catch (err) {
+              console.error("Backend signature verification failed:", err)
+              throw err
+            } finally {
+              setIsVerifyingSignature(false)
+            }
+          }
+
+          return sig
+        },
+        refetchNonce: async () => {
+          if (effectiveAddress) {
+            setIsGeneratingNonce(true)
+            try {
+              const nonceRes = await generateNonce(effectiveAddress)
+              const currentNonce = nonceRes.data.nonce
+              const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress.toLowerCase()}\nNonce: ${currentNonce}`
+              setNonce(currentNonce)
+              setNonceMessage(nonceMsg)
+              setSignature(null)
+            } finally {
+              setIsGeneratingNonce(false)
+            }
+          }
+        },
       }}
     >
       {children}

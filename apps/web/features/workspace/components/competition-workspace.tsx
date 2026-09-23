@@ -19,7 +19,7 @@ export function CompetitionWorkspace({
           { label: "Competitions", href: routes.competitions },
           {
             label: competition.title,
-            href: routes.competition(competition.slug),
+            href: routes.competition(competition.id),
           },
           { label: "My Competition" },
         ]}

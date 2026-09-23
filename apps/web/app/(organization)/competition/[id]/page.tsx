@@ -1,11 +1,17 @@
-import React from 'react';
+'use client';
+
+import React, { use, useState } from 'react';
+import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
+import { fetchApiCompetitionById } from '@/lib/competitions-api';
 import {
     Search,
     BookOpen,
     Trophy,
     Clock,
     Target,
-    ChevronRight
+    ChevronRight,
+    Loader2,
 } from 'lucide-react';
 import { Button } from "@workspace/ui/components/button";
 import { Input } from '@workspace/ui/components/input';
@@ -80,14 +86,52 @@ const StatusBadge = ({ status }: { status: string }) => {
     };
 
     return (
-        <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[status]}`}>
-            <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status]}`} />
+        <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[status] || styles["Under Review"]}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status] || dotColors["Under Review"]}`} />
             {status}
         </Badge>
     );
 };
 
-export default function CompetitionDetail() {
+function formatDate(dateStr?: string): string {
+    if (!dateStr) return "TBA";
+    try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        return d.toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+    } catch {
+        return dateStr;
+    }
+}
+
+export default function CompetitionDetail({ params }: { params: Promise<{ id: string }> }) {
+    const resolvedParams = use(params);
+    const id = resolvedParams.id;
+    const [searchQuery, setSearchQuery] = useState("");
+
+    const { data: apiCompetition, isLoading } = useQuery({
+        queryKey: ["competition", id],
+        queryFn: () => fetchApiCompetitionById(id),
+        enabled: Boolean(id),
+    });
+
+    const filteredTeams = teamsData.filter(
+        (team) =>
+            team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            team.members.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
+    const title = apiCompetition?.name || "Autonomous Agents Global Hackathon 2025";
+    const category = apiCompetition?.category || "AI & Autonomous Systems";
+    const guidebookUrl = apiCompetition?.guidebook_cid
+        ? `https://ipfs.io/ipfs/${apiCompetition.guidebook_cid}`
+        : null;
+
+    const startDateLabel = formatDate(apiCompetition?.competition_window);
+    const endDateLabel = formatDate(apiCompetition?.submission_deadline);
+    const durationLabel = apiCompetition?.competition_window
+        ? `${startDateLabel} - ${endDateLabel}`
+        : "Apr 20 - May 05, 2025";
     return (
         <div className="w-full bg-[#F8F9FF] py-10">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col space-y-6">
@@ -96,7 +140,7 @@ export default function CompetitionDetail() {
                 <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                     <div>
                         <div className="flex items-center text-sm text-slate-500 mb-2">
-                            <span>Dashboard</span>
+                            <Link href="/organization" className="hover:underline">Dashboard</Link>
                             <ChevronRight className="w-4 h-4 mx-1" />
                             <span className="text-blue-600 font-medium">Competition Detail</span>
                         </div>
@@ -109,28 +153,48 @@ export default function CompetitionDetail() {
                     </Badge>
                 </div>
 
-                {/* --- Main Info Card --- */}
-                <Card className="border-0 ring-0 shadow-none rounded-xl overflow-hidden bg-white">
-                    <CardContent className="p-6 md:p-8">
-                        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
-                            <div className="space-y-3">
-                                <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50 font-normal text-xs px-3 py-1 rounded-full">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mr-2" />
-                                    Judging & Evaluation Phase (Submissions Closed)
-                                </Badge>
-                                <h2 className="text-3xl font-bold text-slate-900">Autonomous Agents Global Hackathon 2025</h2>
+                {isLoading ? (
+                    <Card className="border-0 ring-0 shadow-none rounded-xl bg-white p-12 text-center text-slate-500">
+                        <Loader2 className="w-8 h-8 animate-spin mx-auto text-blue-600 mb-3" />
+                        <p>Loading competition details from API...</p>
+                    </Card>
+                ) : (
+                    /* --- Main Info Card --- */
+                    <Card className="border-0 ring-0 shadow-none rounded-xl overflow-hidden bg-white">
+                        <CardContent className="p-6 md:p-8">
+                            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-8">
+                                <div className="space-y-3">
+                                    <Badge variant="secondary" className="bg-blue-50 text-blue-700 hover:bg-blue-50 font-normal text-xs px-3 py-1 rounded-full">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mr-2" />
+                                        Judging & Evaluation Phase (Submissions Closed)
+                                    </Badge>
+                                    <h2 className="text-3xl font-bold text-slate-900">{title}</h2>
+                                    {apiCompetition?.description && (
+                                        <p className="text-slate-500 text-sm max-w-3xl">{apiCompetition.description}</p>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3 shrink-0">
+                                    {guidebookUrl ? (
+                                        <a href={guidebookUrl} target="_blank" rel="noreferrer">
+                                            <Button variant="outline" className="text-slate-600 font-medium border-0 bg-slate-100 hover:bg-slate-200">
+                                                <BookOpen className="w-4 h-4 mr-2" />
+                                                View Guidebook
+                                            </Button>
+                                        </a>
+                                    ) : (
+                                        <Button variant="outline" className="text-slate-600 font-medium border-0 bg-slate-100 hover:bg-slate-200" disabled>
+                                            <BookOpen className="w-4 h-4 mr-2" />
+                                            View Guidebook
+                                        </Button>
+                                    )}
+                                    <Link href={`/competition/${id}/winner`}>
+                                        <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                                            <Trophy className="w-4 h-4 mr-2" />
+                                            Determine Winner
+                                        </Button>
+                                    </Link>
+                                </div>
                             </div>
-                            <div className="flex items-center gap-3 shrink-0">
-                                <Button variant="outline" className="text-slate-600 font-medium border-0 bg-slate-100 hover:bg-slate-200">
-                                    <BookOpen className="w-4 h-4 mr-2" />
-                                    View Guidebook
-                                </Button>
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
-                                    <Trophy className="w-4 h-4 mr-2" />
-                                    Determine Winner
-                                </Button>
-                            </div>
-                        </div>
 
                         {/* Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -140,7 +204,7 @@ export default function CompetitionDetail() {
                                     <Target className="w-4 h-4 mr-2 text-blue-500" />
                                     Competition Category
                                 </div>
-                                <div className="text-lg font-semibold text-slate-800">AI & Autonomous Systems</div>
+                                <div className="text-lg font-semibold text-slate-800">{category}</div>
                             </div>
 
                             {/* Prize Pool */}
@@ -161,12 +225,13 @@ export default function CompetitionDetail() {
                                     <Clock className="w-4 h-4 mr-2 text-blue-500" />
                                     Competition Duration
                                 </div>
-                                <div className="text-lg font-semibold text-slate-800">Apr 20 - May 05, 2025</div>
+                                <div className="text-lg font-semibold text-slate-800">{durationLabel}</div>
                                 <div className="text-xs text-slate-500">Submission Closed • Code Freeze Active</div>
                             </div>
                         </div>
                     </CardContent>
                 </Card>
+                )}
 
                 {/* --- Search & Filter Bar --- */}
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4 bg-white p-2 rounded-xl border-0 ring-0 shadow-none">
@@ -174,11 +239,13 @@ export default function CompetitionDetail() {
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <Input
                             placeholder="Search by team name or team member name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-9 border-0 bg-slate-50 focus-visible:ring-1 focus-visible:ring-blue-500 shadow-none"
                         />
                     </div>
                     <div className="text-sm text-slate-500 font-medium px-4">
-                        Total Active: <span className="text-blue-600 font-semibold">5 teams shown</span>
+                        Total Active: <span className="text-blue-600 font-semibold">{filteredTeams.length} teams shown</span>
                     </div>
                 </div>
 
@@ -194,7 +261,7 @@ export default function CompetitionDetail() {
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {teamsData.map((team) => (
+                            {filteredTeams.map((team) => (
                                 <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
                                     <TableCell className="py-4 pl-6">
                                         <div className="flex items-center gap-3">
@@ -219,6 +286,13 @@ export default function CompetitionDetail() {
                                     </TableCell>
                                 </TableRow>
                             ))}
+                            {filteredTeams.length === 0 && (
+                                <TableRow>
+                                    <TableCell colSpan={4} className="py-8 text-center text-slate-500 text-sm">
+                                        No teams found matching &quot;{searchQuery}&quot;
+                                    </TableCell>
+                                </TableRow>
+                            )}
                         </TableBody>
                     </Table>
                 </Card>

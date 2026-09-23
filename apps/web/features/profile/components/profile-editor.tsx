@@ -42,8 +42,14 @@ export function ProfileEditor({
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
   const [copied, setCopied] = useState(false)
-  const { openWallet, connected, disconnectWallet, address, balance, chainName } =
-    useSiteActions()
+  const {
+    openWallet,
+    connected,
+    disconnectWallet,
+    address,
+    balance,
+    chainName,
+  } = useSiteActions()
 
   async function copyAddress() {
     if (!address) return

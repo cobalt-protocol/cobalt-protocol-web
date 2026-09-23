@@ -99,7 +99,7 @@ export function CompetitionCard({
           </div>
         </div>
         <Link
-          href={routes.competition(competition.slug)}
+          href={routes.competition(competition.id)}
           className={primaryLinkClass + " w-full"}
         >
           View Details <ArrowRight size={15} />

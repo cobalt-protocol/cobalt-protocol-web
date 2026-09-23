@@ -76,7 +76,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           { label: "Competitions", href: routes.competitions },
           {
             label: competition.title,
-            href: routes.competition(competition.slug),
+            href: routes.competition(competition.id),
           },
           { label: "Join a Team" },
         ]}

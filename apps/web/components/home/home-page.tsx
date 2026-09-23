@@ -1,7 +1,3 @@
-import {
-  getCompetitions,
-  getFeaturedCompetitions,
-} from "@/features/competitions/data/competition-repository"
 import { competitionPreviewDate } from "@/features/competitions/data/competitions"
 import { EscrowSection } from "./escrow-section"
 import { FeaturedCompetitions } from "./featured-competitions"
@@ -11,11 +7,7 @@ export function HomePage() {
   return (
     <>
       <HeroSection />
-      <FeaturedCompetitions
-        competitions={getFeaturedCompetitions()}
-        total={getCompetitions().length}
-        referenceDate={competitionPreviewDate}
-      />
+      <FeaturedCompetitions referenceDate={competitionPreviewDate} />
       <EscrowSection />
     </>
   )
