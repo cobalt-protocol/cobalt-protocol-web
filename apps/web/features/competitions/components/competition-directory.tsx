@@ -11,7 +11,6 @@ import { ChevronLeft, ChevronRight, Search, X } from "lucide-react"
 import { useState } from "react"
 import { selectCompetitions } from "../lib/competition-selectors"
 import {
-  competitionCategories,
   type Competition,
   type CompetitionCategory,
   type CompetitionFilters,
@@ -34,6 +33,9 @@ export function CompetitionDirectory({
 }) {
   const [filters, setFilters] = useState<CompetitionFilters>(initialFilters)
   const [page, setPage] = useState(1)
+  const availableCategories = Array.from(
+    new Set(competitions.map((competition) => competition.category))
+  )
   function updateFilters(changes: Partial<CompetitionFilters>) {
     setFilters((current) => ({ ...current, ...changes }))
     setPage(1)
@@ -82,7 +84,7 @@ export function CompetitionDirectory({
             Live Competitions
           </p>
           <p className="text-xs text-muted-foreground">
-            Across {competitionCategories.length} categories
+            Across {availableCategories.length} categories
           </p>
         </Panel>
       </div>
@@ -109,7 +111,7 @@ export function CompetitionDirectory({
             >
               All Categories
             </button>
-            {competitionCategories.map((category) => (
+            {availableCategories.map((category) => (
               <button
                 key={category}
                 aria-pressed={filters.categories.includes(category)}

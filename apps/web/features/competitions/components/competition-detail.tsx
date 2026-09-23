@@ -99,6 +99,11 @@ export function CompetitionDetail({
                 </p>
               </article>
             ))}
+            {competition.judgingCriteria.length === 0 && (
+              <p className="col-span-full text-sm text-muted-foreground">
+                Judging criteria have not been published yet.
+              </p>
+            )}
           </div>
         </Panel>
         <div className="grid items-start gap-6 lg:grid-cols-[.85fr_1.15fr]">
@@ -131,7 +136,9 @@ export function CompetitionDetail({
           </div>
           <Panel>
             <p className="mb-2 text-[10px] font-bold text-primary uppercase">
-              Secured payout pool
+              {competition.prizes.length > 0
+                ? "Secured payout pool"
+                : "Prize information"}
             </p>
             <SectionHeading title="Prize Distribution" />
             <div className="space-y-3">
@@ -161,6 +168,11 @@ export function CompetitionDetail({
                   </div>
                 </div>
               ))}
+              {competition.prizes.length === 0 && (
+                <p className="text-sm text-muted-foreground">
+                  Prize categories and verified funding status are not available yet.
+                </p>
+              )}
             </div>
           </Panel>
         </div>
