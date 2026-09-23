@@ -3,7 +3,8 @@
 import React, { use, useState } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
-import { fetchApiCompetitionById } from '@/lib/competitions-api';
+import { useAccount } from 'wagmi';
+import { fetchApiCompetitionById, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol } from '@/lib/competitions-api';
 import {
     Search,
     BookOpen,
@@ -12,6 +13,7 @@ import {
     Target,
     ChevronRight,
     Loader2,
+    ExternalLink,
 } from 'lucide-react';
 import { Button } from "@workspace/ui/components/button";
 import { Input } from '@workspace/ui/components/input';
@@ -109,9 +111,18 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
     const id = resolvedParams.id;
     const [searchQuery, setSearchQuery] = useState("");
 
+    const { chain } = useAccount();
+    const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
+
     const { data: apiCompetition, isLoading } = useQuery({
         queryKey: ["competition", id],
         queryFn: () => fetchApiCompetitionById(id),
+        enabled: Boolean(id),
+    });
+
+    const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
+        queryKey: ["competition-token-prize", id],
+        queryFn: () => fetchTokenPrizeByCompetitionId(id),
         enabled: Boolean(id),
     });
 
@@ -127,11 +138,26 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
         ? `https://ipfs.io/ipfs/${apiCompetition.guidebook_cid}`
         : null;
 
-    const startDateLabel = formatDate(apiCompetition?.competition_window);
-    const endDateLabel = formatDate(apiCompetition?.submission_deadline);
-    const durationLabel = apiCompetition?.competition_window
+    const startDateLabel = formatDate(apiCompetition?.registration_window);
+    const endDateLabel = formatDate(apiCompetition?.pirze_certificate_claim);
+    const durationLabel = apiCompetition?.registration_window
         ? `${startDateLabel} - ${endDateLabel}`
         : "Apr 20 - May 05, 2025";
+
+    const prizePoolDisplay = React.useMemo(() => {
+        if (isLoadingTokenPrize) return "Loading...";
+        if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
+            return formatTokenPrize(tokenPrizeData.total_prize, tokenPrizeData.token_address, connectedNativeSymbol);
+        }
+        return `75,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
+    }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol]);
+
+    const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0xCE5604583F54D41DC2f95B93c5291294830C728A';
+    const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0xd09e0B06B087cFBab1B33c9c5c4d4f535d8EbcD3';
+
+    const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
+    const competitionContractUrl = `${explorerBaseUrl}/address/${competitionContractAddress}`;
+    const treasuryPrizeContractUrl = `${explorerBaseUrl}/address/${treasuryPrizeContractAddress}`;
     return (
         <div className="w-full bg-[#F8F9FF] py-10">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col space-y-6">
@@ -199,34 +225,64 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
                         {/* Stats Grid */}
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             {/* Category */}
-                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
-                                <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
-                                    <Target className="w-4 h-4 mr-2 text-blue-500" />
-                                    Competition Category
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
+                                        <Target className="w-4 h-4 mr-2 text-blue-500" />
+                                        Competition Category
+                                    </div>
+                                    <div className="text-lg font-semibold text-slate-800 mt-1">{category}</div>
                                 </div>
-                                <div className="text-lg font-semibold text-slate-800">{category}</div>
+                                {competitionContractAddress && (
+                                    <a
+                                        href={competitionContractUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 font-mono gap-1 hover:underline mt-1 w-fit"
+                                        title={competitionContractAddress}
+                                    >
+                                        <span>Contract: {competitionContractAddress.slice(0, 6)}...{competitionContractAddress.slice(-4)}</span>
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                    </a>
+                                )}
                             </div>
 
                             {/* Prize Pool */}
-                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
-                                <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
-                                    <Trophy className="w-4 h-4 mr-2 text-blue-500" />
-                                    Prize Pool
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
+                                        <Trophy className="w-4 h-4 mr-2 text-blue-500" />
+                                        Prize Pool
+                                    </div>
+                                    <div className="text-lg font-semibold text-slate-800 flex items-baseline gap-1 mt-1">
+                                        {prizePoolDisplay}
+                                        <span className="text-sm font-normal text-slate-500">(Guaranteed Escrow Secured)</span>
+                                    </div>
                                 </div>
-                                <div className="text-lg font-semibold text-slate-800 flex items-baseline gap-1">
-                                    $75,000 USDC
-                                    <span className="text-sm font-normal text-slate-500">(Guaranteed Escrow Secured)</span>
-                                </div>
+                                {treasuryPrizeContractAddress && (
+                                    <a
+                                        href={treasuryPrizeContractUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="inline-flex items-center text-xs text-blue-600 hover:text-blue-800 font-mono gap-1 hover:underline mt-1 w-fit"
+                                        title={treasuryPrizeContractAddress}
+                                    >
+                                        <span>Contract: {treasuryPrizeContractAddress.slice(0, 6)}...{treasuryPrizeContractAddress.slice(-4)}</span>
+                                        <ExternalLink className="w-3 h-3 shrink-0" />
+                                    </a>
+                                )}
                             </div>
 
                             {/* Duration */}
-                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col gap-2">
-                                <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
-                                    <Clock className="w-4 h-4 mr-2 text-blue-500" />
-                                    Competition Duration
+                            <div className="bg-slate-50 p-5 rounded-xl border-0 flex flex-col justify-between gap-2">
+                                <div>
+                                    <div className="flex items-center text-slate-500 text-xs font-semibold tracking-wider uppercase">
+                                        <Clock className="w-4 h-4 mr-2 text-blue-500" />
+                                        Competition Duration
+                                    </div>
+                                    <div className="text-lg font-semibold text-slate-800 mt-1">{durationLabel}</div>
                                 </div>
-                                <div className="text-lg font-semibold text-slate-800">{durationLabel}</div>
-                                <div className="text-xs text-slate-500">Submission Closed • Code Freeze Active</div>
+                                <div className="text-xs text-slate-500 mt-1">Submission Closed • Code Freeze Active</div>
                             </div>
                         </div>
                     </CardContent>

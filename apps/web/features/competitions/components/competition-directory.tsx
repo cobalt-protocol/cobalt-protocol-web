@@ -32,7 +32,7 @@ export function CompetitionDirectory({
   referenceDate,
 }: {
   competitions?: readonly Competition[]
-  referenceDate: string
+  referenceDate?: string
 }) {
   const { data: competitions = initialCompetitions || [] } = useQuery({
     queryKey: ["competitions"],
@@ -256,10 +256,7 @@ export function CompetitionDirectory({
           </Button>
         </div>
       </nav>
-      <p className="mt-3 text-[11px] text-muted-foreground">
-        Design preview · sample competition dates are shown relative to April 4,
-        2025.
-      </p>
+
     </PageContainer>
   )
 }

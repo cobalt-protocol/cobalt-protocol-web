@@ -1,3 +1,4 @@
+import { formatUnits } from "viem"
 import type { Competition, CompetitionCategory } from "@/features/competitions/types"
 import { mockCompetitions } from "@/features/competitions/data/competitions"
 
@@ -95,8 +96,8 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
     status,
     description: apiComp.description || "",
     registrationEndsAt: apiComp.registration_window || new Date().toISOString(),
-    startsAt: apiComp.competition_window || new Date().toISOString(),
-    endsAt: apiComp.submission_deadline || new Date().toISOString(),
+    startsAt: apiComp.registration_window || apiComp.competition_window || new Date().toISOString(),
+    endsAt: apiComp.pirze_certificate_claim || apiComp.result_announcement || apiComp.submission_deadline || new Date().toISOString(),
     participants: 0,
     teamCount: 0,
     maxTeamSize: 5,
@@ -190,6 +191,68 @@ export interface ApiSingleCompetitionResponse {
   errors: null | any
 }
 
+export interface ApiTokenPrizeData {
+  competition_id: string
+  onchain_competition_id: string
+  token_address?: string | null
+  total_prize?: string | number | null
+  prize_deposits_count?: number
+}
+
+export interface ApiTokenPrizeResponse {
+  data: ApiTokenPrizeData | null
+  message: string
+  errors: null | any
+}
+
+export function getTokenSymbol(
+  tokenAddress?: string | null,
+  chainNativeSymbol?: string
+): string {
+  if (!tokenAddress || tokenAddress === "0x0000000000000000000000000000000000000000") {
+    return chainNativeSymbol || "BOHR"
+  }
+  return "USDC"
+}
+
+export function formatTokenPrize(
+  totalPrize?: string | number | null,
+  tokenAddress?: string | null,
+  chainNativeSymbol?: string,
+  decimals: number = 18
+): string {
+  if (totalPrize === undefined || totalPrize === null || totalPrize === "") {
+    return `0 ${getTokenSymbol(tokenAddress, chainNativeSymbol)}`
+  }
+
+  const symbol = getTokenSymbol(tokenAddress, chainNativeSymbol)
+  const strVal = totalPrize.toString().trim()
+
+  try {
+    const bigVal = BigInt(strVal)
+    if (bigVal >= 1_000_000_000n) {
+      const formattedStr = formatUnits(bigVal, decimals)
+      const numVal = parseFloat(formattedStr)
+      if (!isNaN(numVal)) {
+        return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
+      }
+      return `${formattedStr} ${symbol}`
+    } else {
+      const numVal = Number(strVal)
+      if (!isNaN(numVal)) {
+        return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
+      }
+    }
+  } catch {
+    const numVal = parseFloat(strVal)
+    if (!isNaN(numVal)) {
+      return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
+    }
+  }
+
+  return `${strVal} ${symbol}`
+}
+
 export async function fetchApiCompetitionById(id: string, token?: string | Record<string, any>): Promise<ApiCompetition | null> {
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" }
@@ -209,6 +272,31 @@ export async function fetchApiCompetitionById(id: string, token?: string | Recor
     }
 
     const json: ApiSingleCompetitionResponse = await res.json()
+    return json.data || null
+  } catch {
+    return null
+  }
+}
+
+export async function fetchTokenPrizeByCompetitionId(id: string, token?: string | Record<string, any>): Promise<ApiTokenPrizeData | null> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (authToken) {
+      headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
+    }
+
+    const res = await fetch(`${API_BASE_URL}/competitions/${encodeURIComponent(id)}/token-prize`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (!res.ok) {
+      return null
+    }
+
+    const json: ApiTokenPrizeResponse = await res.json()
     return json.data || null
   } catch {
     return null
