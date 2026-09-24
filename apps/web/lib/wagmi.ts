@@ -22,6 +22,21 @@ if (typeof window !== "undefined") {
       return originalDefineProperty.call(this, obj, prop, attributes)
     }
   } catch (_) {}
+
+  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout)
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason
+    const message = reason?.message || String(reason || "")
+    if (
+      message.includes("Aave Account") ||
+      message.includes("AaveAccountSdk") ||
+      message.includes("EIP1193 provider connection timeout") ||
+      message.includes("Failed to establish lazy connection")
+    ) {
+      console.warn("Prevented unhandled browser extension rejection:", message)
+      event.preventDefault()
+    }
+  })
 }
 
 export const botChainTestnet = defineChain({

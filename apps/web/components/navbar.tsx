@@ -22,7 +22,7 @@ const NavBar = () => {
                         alt="Logo"
                         width={300}
                         height={75}
-                        style={{ height: "auto" }}
+                        style={{ height: "auto", width: "auto" }}
                         className="w-[300px] object-contain"
                     />
                 </a>

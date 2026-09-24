@@ -12,13 +12,12 @@ import {
   Check,
   CloudUpload,
   Copy,
-  Pencil,
   Plus,
   SquareTerminal,
   UserRound,
   X,
 } from "lucide-react"
-import { useState, type FormEvent } from "react"
+import { useEffect, useState, type FormEvent } from "react"
 import { skillLevels, type BuilderProfile, type SkillLevel } from "../types"
 
 function formatAddress(addr?: string) {
@@ -30,18 +29,20 @@ function formatAddress(addr?: string) {
 export function ProfileEditor({
   initialProfile,
   onSave,
-  startEditing = false,
 }: {
   initialProfile: BuilderProfile
-  onSave: (profile: BuilderProfile) => boolean
-  startEditing?: boolean
+  onSave: (profile: BuilderProfile) => boolean | Promise<boolean>
 }) {
-  const [profile, setProfile] = useState(initialProfile)
-  const [editing, setEditing] = useState(startEditing)
+  const [profile, setProfile] = useState<BuilderProfile>(initialProfile)
+  const [isSaving, setIsSaving] = useState(false)
   const [skillName, setSkillName] = useState("")
   const [level, setLevel] = useState<SkillLevel>("Intermediate")
   const [feedback, setFeedback] = useState("")
   const [copied, setCopied] = useState(false)
+
+  useEffect(() => {
+    setProfile(initialProfile)
+  }, [initialProfile])
   const {
     openWallet,
     connected,
@@ -61,15 +62,19 @@ export function ProfileEditor({
       // ignore
     }
   }
-  function save(event: FormEvent<HTMLFormElement>) {
+  async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const next = {
+    setIsSaving(true)
+    setFeedback("")
+    const next: BuilderProfile = {
       ...profile,
       username: profile.username.trim(),
       email: profile.email.trim(),
       location: profile.location.trim(),
       institution: profile.institution.trim(),
       pitch: profile.pitch.trim(),
+      github_link: profile.github_link?.trim() ?? "",
+      linkedin_link: profile.linkedin_link?.trim() ?? "",
     }
     if (
       !next.username ||
@@ -81,15 +86,24 @@ export function ProfileEditor({
       setFeedback(
         "Please complete all profile fields and add at least one skill."
       )
+      setIsSaving(false)
       return
     }
-    if (!onSave(next)) {
-      setFeedback(
-        "Browser storage is unavailable. Your changes are still in the form; please try saving again."
-      )
-      return
+
+    try {
+      const res = await onSave(next)
+      if (!res) {
+        setFeedback(
+          "Could not save profile changes. Please check your network or try again."
+        )
+      } else {
+        setFeedback("")
+      }
+    } catch (err: any) {
+      setFeedback(err?.message || "Failed to save profile.")
+    } finally {
+      setIsSaving(false)
     }
-    setEditing(false)
   }
   function addSkill() {
     const name = skillName.trim()
@@ -127,22 +141,44 @@ export function ProfileEditor({
           <SectionHeading title="Linked Accounts" />
           <div className="space-y-3">
             {[
-              { label: "GitHub", icon: SquareTerminal },
-              { label: "LinkedIn", icon: AtSign },
-            ].map(({ label, icon: Icon }) => (
+              {
+                label: "GitHub",
+                icon: SquareTerminal,
+                value: profile.github_link,
+              },
+              {
+                label: "LinkedIn",
+                icon: AtSign,
+                value: profile.linkedin_link,
+              },
+            ].map(({ label, icon: Icon, value }) => (
               <div
                 key={label}
-                className="flex items-center gap-3 rounded-xl bg-slate-50 p-4"
+                className="flex items-center gap-3 rounded-xl bg-slate-50 p-4 dark:bg-slate-900/50"
               >
-                <Icon size={23} className="text-primary" />
-                <div>
+                <Icon size={23} className="text-primary shrink-0" />
+                <div className="min-w-0 flex-1">
                   <h3 className="text-sm font-bold">{label}</h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Account linking coming soon
-                  </p>
+                  {value ? (
+                    <a
+                      href={value.startsWith("http") ? value : `https://${value}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mt-1 block truncate text-xs text-primary hover:underline"
+                      title={value}
+                    >
+                      {value}
+                    </a>
+                  ) : (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Not linked
+                    </p>
+                  )}
                 </div>
-                <span className="ml-auto">
-                  <Badge tone="neutral">Not linked</Badge>
+                <span className="ml-auto shrink-0">
+                  <Badge tone={value ? "green" : "neutral"}>
+                    {value ? "Linked" : "Not linked"}
+                  </Badge>
                 </span>
               </div>
             ))}
@@ -216,22 +252,9 @@ export function ProfileEditor({
         </Panel>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <Button
-          type="button"
-          variant="secondary"
-          className="h-11 px-5"
-          onClick={() => {
-            setEditing(!editing)
-            setFeedback("")
-            if (editing) setProfile(initialProfile)
-          }}
-        >
-          <Pencil size={16} />
-          {editing ? "Cancel Editing" : "Edit Profile"}
-        </Button>
-        <Button type="submit" disabled={!editing} className="h-11 px-5">
+        <Button type="submit" disabled={isSaving} className="h-11 px-5">
           <CloudUpload size={16} />
-          Save Changes
+          {isSaving ? "Saving..." : "Save Changes"}
         </Button>
         {feedback && (
           <p role="status" className="text-sm text-amber-800">
@@ -244,22 +267,24 @@ export function ProfileEditor({
         <div className="grid gap-5 md:grid-cols-2">
           {(
             [
-              { key: "username", label: "Username", type: "text" },
-              { key: "email", label: "Email", type: "email" },
-              { key: "location", label: "Location", type: "text" },
-              { key: "institution", label: "Institution", type: "text" },
+              { key: "username", label: "Username", type: "text", required: true, placeholder: "e.g. alexrivera_ai" },
+              { key: "email", label: "Email", type: "email", required: true, placeholder: "e.g. alex@example.com" },
+              { key: "location", label: "Location", type: "text", required: true, placeholder: "e.g. Jakarta, Indonesia" },
+              { key: "institution", label: "Institution", type: "text", required: true, placeholder: "e.g. Harvard University" },
+              { key: "github_link", label: "GitHub Link", type: "url", required: false, placeholder: "https://github.com/username" },
+              { key: "linkedin_link", label: "LinkedIn Link", type: "url", required: false, placeholder: "https://linkedin.com/in/username" },
             ] as const
-          ).map(({ key, label, type }) => (
+          ).map(({ key, label, type, required, placeholder }) => (
             <label key={key} className="space-y-2 text-sm font-semibold">
               <span>{label}</span>
               <input
                 className={fieldClass}
                 name={key}
                 type={type}
-                required
-                maxLength={150}
-                readOnly={!editing}
-                value={profile[key]}
+                required={required}
+                maxLength={250}
+                placeholder={placeholder}
+                value={profile[key] ?? ""}
                 onChange={(event) =>
                   setProfile((current) => ({
                     ...current,
@@ -288,68 +313,63 @@ export function ProfileEditor({
             >
               {skill.name}
               <Badge>{skill.level}</Badge>
-              {editing && (
-                <button
-                  type="button"
-                  aria-label={`Remove ${skill.name}`}
-                  onClick={() =>
-                    setProfile((current) => ({
-                      ...current,
-                      skills: current.skills.filter(
-                        (item) => item.name !== skill.name
-                      ),
-                    }))
-                  }
-                >
-                  <X size={14} />
-                </button>
-              )}
+              <button
+                type="button"
+                aria-label={`Remove ${skill.name}`}
+                onClick={() =>
+                  setProfile((current) => ({
+                    ...current,
+                    skills: current.skills.filter(
+                      (item) => item.name !== skill.name
+                    ),
+                  }))
+                }
+              >
+                <X size={14} />
+              </button>
             </span>
           ))}
         </div>
-        {editing && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <input
-              aria-label="New skill name"
-              className={fieldClass + " max-w-64"}
-              placeholder="Add a skill"
-              maxLength={60}
-              value={skillName}
-              onChange={(event) => setSkillName(event.target.value)}
-            />
-            <select
-              aria-label="Skill level"
-              value={level}
-              className={fieldClass + " w-auto"}
-              onChange={(event) => {
-                const selectedLevel = skillLevels.find(
-                  (item) => item === event.target.value
-                )
-                if (selectedLevel) setLevel(selectedLevel)
-              }}
-            >
-              {skillLevels.map((item) => (
-                <option key={item}>{item}</option>
-              ))}
-            </select>
-            <Button
-              type="button"
-              className="h-11"
-              variant="secondary"
-              onClick={addSkill}
-            >
-              <Plus size={16} />
-              Add skill
-            </Button>
-          </div>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2">
+          <input
+            aria-label="New skill name"
+            className={fieldClass + " max-w-64"}
+            placeholder="Add a skill"
+            maxLength={60}
+            value={skillName}
+            onChange={(event) => setSkillName(event.target.value)}
+          />
+          <select
+            aria-label="Skill level"
+            value={level}
+            className={fieldClass + " w-auto"}
+            onChange={(event) => {
+              const selectedLevel = skillLevels.find(
+                (item) => item === event.target.value
+              )
+              if (selectedLevel) setLevel(selectedLevel)
+            }}
+          >
+            {skillLevels.map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+          <Button
+            type="button"
+            className="h-11"
+            variant="secondary"
+            onClick={addSkill}
+          >
+            <Plus size={16} />
+            Add skill
+          </Button>
+        </div>
         <label className="mt-7 block text-sm font-semibold">
           <span>What I Can Contribute to a Team (Builder Pitch)</span>
           <textarea
             className={fieldClass + " mt-2 min-h-32 leading-7"}
             required
             maxLength={2000}
-            readOnly={!editing}
             value={profile.pitch}
             onChange={(event) =>
               setProfile((current) => ({

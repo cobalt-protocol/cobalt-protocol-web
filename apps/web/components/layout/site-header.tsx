@@ -17,7 +17,7 @@ export function Brand() {
         alt="Cobalt Protocol logo"
         width={200}
         height={50}
-        style={{ height: "auto" }}
+        style={{ height: "auto", width: "auto" }}
         className="w-[200px] object-contain"
       />
     </Link>

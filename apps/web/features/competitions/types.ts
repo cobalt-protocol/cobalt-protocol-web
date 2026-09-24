@@ -40,6 +40,7 @@ export interface Competition {
   icon: CompetitionIcon
   status: CompetitionStatus
   description: string
+  requirement?: string
   registrationEndsAt: string
   startsAt: string
   endsAt: string

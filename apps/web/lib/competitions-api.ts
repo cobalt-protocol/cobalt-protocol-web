@@ -1,6 +1,5 @@
 import { formatUnits } from "viem"
 import type { Competition, CompetitionCategory } from "@/features/competitions/types"
-import { mockCompetitions } from "@/features/competitions/data/competitions"
 
 export interface ApiCompetitionWinner {
   id: string
@@ -100,12 +99,13 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
     tx_hash: formattedTxHash,
     title: apiComp.name || "Untitled Competition",
     organizer: "Cobalt Protocol",
-    organizerDescription: apiComp.requirement || "Decentralized competition on Cobalt Protocol.",
+    organizerDescription: "Decentralized competition organizer on Cobalt Protocol.",
     category,
     tag: apiComp.category || category,
     icon,
     status,
     description: apiComp.description || "",
+    requirement: apiComp.requirement || "",
     registrationEndsAt: apiComp.registration_window || new Date().toISOString(),
     startsAt: apiComp.registration_window || apiComp.competition_window || new Date().toISOString(),
     endsAt: apiComp.pirze_certificate_claim || apiComp.result_announcement || apiComp.submission_deadline || new Date().toISOString(),
@@ -115,11 +115,11 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
     currency: "USDC",
     prizes,
     timeline: [
-      { id: "registration", title: "Registration Window", description: apiComp.requirement || "Register team", dateLabel: fmtDate(apiComp.registration_window), status: now < new Date(apiComp.registration_window) ? "active" : "upcoming" },
-      { id: "competition", title: "Competition Window", description: "Build project", dateLabel: fmtDate(apiComp.competition_window), status: "upcoming" },
-      { id: "submission", title: "Submission Deadline", description: "Final submission", dateLabel: fmtDate(apiComp.submission_deadline), status: "upcoming" },
-      { id: "judging", title: "Judging Review", description: "Project evaluation", dateLabel: fmtDate(apiComp.judging_review), status: "locked" },
-      { id: "announcement", title: "Results & Claim", description: "Winners announcement", dateLabel: fmtDate(apiComp.result_announcement || apiComp.pirze_certificate_claim), status: "locked" },
+      { id: "registration", title: "Registration Window", description: "Register team and form squad before window closes", dateLabel: fmtDate(apiComp.registration_window), status: now < new Date(apiComp.registration_window) ? "active" : "upcoming" },
+      { id: "competition", title: "Competition Window", description: "Build project solution and collaborate", dateLabel: fmtDate(apiComp.competition_window), status: "upcoming" },
+      { id: "submission", title: "Submission Deadline", description: "Final solution and repository submission", dateLabel: fmtDate(apiComp.submission_deadline), status: "upcoming" },
+      { id: "judging", title: "Judging Review", description: "Project evaluation and scoring", dateLabel: fmtDate(apiComp.judging_review), status: "locked" },
+      { id: "announcement", title: "Results & Claim", description: "Winners announcement and prize payout", dateLabel: fmtDate(apiComp.result_announcement || apiComp.pirze_certificate_claim), status: "locked" },
     ],
     judgingCriteria: [
       { id: "innovation", title: "Innovation & Impact", weight: 50, description: "Novelty & technical impact." },
@@ -218,7 +218,7 @@ export async function fetchCompetitions(token?: string | null | boolean | Record
       return []
     }
 
-    if (!res.ok) return [...mockCompetitions]
+    if (!res.ok) return []
 
     const json: ApiCompetitionsResponse = await res.json()
     if (!json.data || !Array.isArray(json.data) || json.data.length === 0) {
@@ -228,7 +228,7 @@ export async function fetchCompetitions(token?: string | null | boolean | Record
     const apiMapped = json.data.map(mapApiCompetitionToCompetition)
     return apiMapped
   } catch {
-    return [...mockCompetitions]
+    return []
   }
 }
 
@@ -381,8 +381,7 @@ export async function fetchCompetitionById(id: string): Promise<Competition | nu
   if (apiData) {
     return mapApiCompetitionToCompetition(apiData)
   }
-  const fallback = mockCompetitions.find((c) => c.id === id || c.slug === id)
-  return fallback || null
+  return null
 }
 
 export interface ApiPriceCompetition {

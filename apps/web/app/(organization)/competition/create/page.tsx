@@ -270,6 +270,16 @@ export default function CreateCompetition() {
     const [requirements, setRequirements] = useState(
         '- Teams of 1 to 5 members are permitted.\n- Open-source codebase with permissive MIT or Apache 2.0 licensing.\n- Must provide functional public GitHub repository with reproducible test suites.\n- Use of local wallet architecture is not mandatory; however, it is highly recommended.'
     );
+    const [teamSize, setTeamSize] = useState<'1-3 member' | '1-5 member'>('1-5 member');
+
+    const handleTeamSizeChange = (selected: '1-3 member' | '1-5 member') => {
+        setTeamSize(selected);
+        if (selected === '1-3 member') {
+            setRequirements((prev) => prev.replace('1 to 5 members', '1 to 3 members'));
+        } else {
+            setRequirements((prev) => prev.replace('1 to 3 members', '1 to 5 members'));
+        }
+    };
     const [prizes, setPrizes] = useState<PrizeCategory[]>(INITIAL_PRIZES);
     const [participantCertificate, setParticipantCertificate] = useState('Upload4.png');
     const [participantCertificateFile, setParticipantCertificateFile] = useState<File | null>(null);
@@ -408,7 +418,7 @@ export default function CreateCompetition() {
 
     const competitionContractAddress = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT ||
         process.env.COMPETITION_CONTRACT ||
-        '0x3fA5bCC0f97ffd83Dcc92176751eDF65F98D1c61') as `0x${string}`;
+        '0x2938eabf29e9F7ecaff7E11ca9794DFa904e78D7') as `0x${string}`;
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
 
@@ -444,6 +454,11 @@ export default function CreateCompetition() {
             return;
         }
 
+        if (!prizes || prizes.length === 0) {
+            setTxErrorCustom('Competition must have at least one prize category/winner.');
+            return;
+        }
+
         try {
             setIsUploadingIpfs(true);
 
@@ -475,20 +490,29 @@ export default function CreateCompetition() {
                 return isNaN(ts) ? 0n : BigInt(ts);
             };
 
+            const nowTs = BigInt(Math.floor(Date.now() / 1000));
+            const prizeClaimTs = toUnix(duration.prizeClaimStart);
+            if (prizeClaimTs <= nowTs) {
+                setTxErrorCustom('Prize & Certificate Claim Date must be set to a future date & time.');
+                setIsUploadingIpfs(false);
+                return;
+            }
+
             const _competition = {
                 id: 0n,
                 name: name.trim(),
                 category: category.trim(),
                 description: description.trim(),
                 requirements: requirements.trim(),
-                organization: address as `0x${string}`,
+                formation: teamSize.trim(),
+                organization: (address || '0x0000000000000000000000000000000000000000') as `0x${string}`,
                 schedule: {
                     registrationWindow: toUnix(duration.registrationEnd || duration.registrationStart),
                     competitionWindow: toUnix(duration.competitionEnd || duration.competitionStart),
                     submissionDeadline: toUnix(duration.submissionDeadline),
                     judgingReview: toUnix(duration.judgingEnd || duration.judgingStart),
                     resultAnnouncement: toUnix(duration.resultsAnnouncement),
-                    prizeCertificateClaim: toUnix(duration.prizeClaimStart),
+                    prizeCertificateClaim: prizeClaimTs,
                 },
                 certificateCID: participantCertCID || '',
                 guideBookCID: guidebookCID || '',
@@ -534,7 +558,7 @@ export default function CreateCompetition() {
                     prizeAmountBigInt = 0n;
                 }
                 return {
-                    id: BigInt(index + 1),
+                    id: 0n,
                     competitionId: 0n,
                     title: p.place.trim(),
                     prizeToken: (selectedTokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`,
@@ -543,22 +567,87 @@ export default function CreateCompetition() {
                 };
             });
 
-            const feeIdBigInt = BigInt(priceCompetitionFeeId || 0);
+            for (const winner of _winners) {
+                if (winner.prizeAmount <= 0n) {
+                    setTxErrorCustom(`Prize amount for category "${winner.title}" must be greater than 0.`);
+                    setIsUploadingIpfs(false);
+                    return;
+                }
+            }
 
-            const isNativePrizeToken =
-                !selectedTokenAddress ||
-                selectedTokenAddress === '0x0000000000000000000000000000000000000000' ||
-                selectedTokenAddress === '0x0';
+            const feeIdBigInt = BigInt(priceCompetitionFeeId || 1);
 
-            const isNativeFeeToken =
-                !feeTokenAddress ||
-                feeTokenAddress === '0x0000000000000000000000000000000000000000' ||
-                feeTokenAddress === '0x0';
-
-            const totalPrizeWei = _winners.reduce((acc, w) => acc + w.prizeAmount, 0n);
-
+            // Fetch platform fee configuration directly from on-chain PriceCompetitionManager
             let feeWei = 0n;
-            if (feeTreasuryAmount) {
+            let feeToken = feeTokenAddress;
+
+            let priceCompetitionManagerAddress = process.env.NEXT_PUBLIC_PRICE_COMPETITION_MANAGER_CONTRACT as `0x${string}`;
+            if (!priceCompetitionManagerAddress && publicClient) {
+                try {
+                    priceCompetitionManagerAddress = await publicClient.readContract({
+                        address: getAddress(competitionContractAddress),
+                        abi: CompetitionManagerABI as any,
+                        functionName: 'priceCompetitionManagerContract',
+                    }) as `0x${string}`;
+                } catch (e) {
+                    console.warn('Could not fetch priceCompetitionManagerContract address:', e);
+                }
+            }
+
+            if (priceCompetitionManagerAddress && publicClient) {
+                try {
+                    const feeAbi = [
+                        {
+                            constant: true,
+                            inputs: [{ name: '_priceCompetitionFeeId', type: 'uint256' }],
+                            name: 'getPriceCompetitionFee',
+                            outputs: [
+                                {
+                                    components: [
+                                        { name: 'id', type: 'uint256' },
+                                        { name: 'treasuryFee', type: 'uint256' },
+                                        { name: 'tokenAddress', type: 'address' },
+                                        { name: 'title', type: 'string' },
+                                        { name: 'description', type: 'string' },
+                                    ],
+                                    name: '',
+                                    type: 'tuple',
+                                },
+                            ],
+                            payable: false,
+                            stateMutability: 'view',
+                            type: 'function',
+                        },
+                    ] as const;
+
+                    const feeData = await publicClient.readContract({
+                        address: priceCompetitionManagerAddress,
+                        abi: feeAbi,
+                        functionName: 'getPriceCompetitionFee',
+                        args: [feeIdBigInt],
+                    }) as { id: bigint; treasuryFee: bigint; tokenAddress: `0x${string}`; title: string; description: string };
+
+                    if (feeData && feeData.id !== 0n) {
+                        feeWei = feeData.treasuryFee;
+                        feeToken = feeData.tokenAddress;
+                    } else {
+                        setTxErrorCustom(`Fee option ID ${feeIdBigInt.toString()} does not exist in PriceCompetitionManager.`);
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Could not query PriceCompetitionManager on-chain fee, using API fallback:', e);
+                    if (feeTreasuryAmount) {
+                        try {
+                            feeWei = typeof feeTreasuryAmount === 'string' && feeTreasuryAmount.includes('.')
+                                ? parseEther(feeTreasuryAmount)
+                                : BigInt(feeTreasuryAmount);
+                        } catch {
+                            feeWei = 0n;
+                        }
+                    }
+                }
+            } else if (feeTreasuryAmount) {
                 try {
                     feeWei = typeof feeTreasuryAmount === 'string' && feeTreasuryAmount.includes('.')
                         ? parseEther(feeTreasuryAmount)
@@ -568,12 +657,39 @@ export default function CreateCompetition() {
                 }
             }
 
+            const isNativePrizeToken =
+                !selectedTokenAddress ||
+                selectedTokenAddress === '0x0000000000000000000000000000000000000000' ||
+                selectedTokenAddress === '0x0';
+
+            const isNativeFeeToken =
+                !feeToken ||
+                feeToken === '0x0000000000000000000000000000000000000000' ||
+                feeToken === '0x0';
+
+            const totalPrizeWei = _winners.reduce((acc, w) => acc + w.prizeAmount, 0n);
+
             let txValue = 0n;
             if (isNativeFeeToken) {
                 txValue += feeWei;
             }
             if (isNativePrizeToken) {
                 txValue += totalPrizeWei;
+            }
+
+            if (txValue > 0n && publicClient) {
+                try {
+                    const balance = await publicClient.getBalance({ address });
+                    if (balance < txValue) {
+                        setTxErrorCustom(
+                            `Insufficient Native Token balance. Required: ${(Number(txValue) / 1e18).toFixed(4)}, Balance: ${(Number(balance) / 1e18).toFixed(4)}`
+                        );
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Could not verify native balance:', e);
+                }
             }
 
             // Pre-flight check: Verify prize token is listed and active on ListingTokenPrizeContract
@@ -614,9 +730,10 @@ export default function CreateCompetition() {
                         abi: listingTokenAbi,
                         functionName: 'listingToken',
                         args: [prizeTokenAddr],
-                    }) as [bigint, `0x${string}`, boolean];
+                    }) as any;
 
-                    const [listingId, , isPrizeActive] = tokenInfo;
+                    const listingId = Array.isArray(tokenInfo) ? BigInt(tokenInfo[0]) : (tokenInfo?.id ? BigInt(tokenInfo.id) : 0n);
+                    const isPrizeActive = Array.isArray(tokenInfo) ? Boolean(tokenInfo[2]) : Boolean(tokenInfo?.isActive);
                     if (listingId === 0n) {
                         setTxErrorCustom(`Prize token (${prizeTokenAddr}) is not listed in ListingTokenPrizeContract.`);
                         setIsUploadingIpfs(false);
@@ -633,6 +750,15 @@ export default function CreateCompetition() {
             }
 
             const erc20Abi = [
+                {
+                    constant: true,
+                    inputs: [{ name: '_owner', type: 'address' }],
+                    name: 'balanceOf',
+                    outputs: [{ name: '', type: 'uint256' }],
+                    payable: false,
+                    stateMutability: 'view',
+                    type: 'function',
+                },
                 {
                     constant: true,
                     inputs: [
@@ -675,6 +801,19 @@ export default function CreateCompetition() {
                 }
 
                 if (treasuryPlatformAddress) {
+                    const feeTokenBalance = await publicClient.readContract({
+                        address: feeTokenAddress as `0x${string}`,
+                        abi: erc20Abi,
+                        functionName: 'balanceOf',
+                        args: [address],
+                    }) as bigint;
+
+                    if (feeTokenBalance < feeWei) {
+                        setTxErrorCustom(`Insufficient Fee Token balance (${feeTokenAddress}). Required: ${feeWei.toString()}, Balance: ${feeTokenBalance.toString()}`);
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+
                     const allowanceFee = await publicClient.readContract({
                         address: feeTokenAddress as `0x${string}`,
                         abi: erc20Abi,
@@ -712,6 +851,19 @@ export default function CreateCompetition() {
                 }
 
                 if (treasuryPrizeAddress) {
+                    const prizeTokenBalance = await publicClient.readContract({
+                        address: selectedTokenAddress as `0x${string}`,
+                        abi: erc20Abi,
+                        functionName: 'balanceOf',
+                        args: [address],
+                    }) as bigint;
+
+                    if (prizeTokenBalance < totalPrizeWei) {
+                        setTxErrorCustom(`Insufficient Prize Token balance (${selectedTokenAddress}). Required: ${totalPrizeWei.toString()}, Balance: ${prizeTokenBalance.toString()}`);
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+
                     const allowancePrize = await publicClient.readContract({
                         address: selectedTokenAddress as `0x${string}`,
                         abi: erc20Abi,
@@ -821,6 +973,29 @@ export default function CreateCompetition() {
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
                         />
+                    </div>
+                    <div className="mb-6">
+                        <label className="block text-xs font-semibold text-slate-600 mb-2">Team Member Limit *</label>
+                        <div className="flex items-center space-x-6">
+                            <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={teamSize === '1-3 member'}
+                                    onChange={() => handleTeamSizeChange('1-3 member')}
+                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span className="font-medium text-slate-700">1-3 member</span>
+                            </label>
+                            <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={teamSize === '1-5 member'}
+                                    onChange={() => handleTeamSizeChange('1-5 member')}
+                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span className="font-medium text-slate-700">1-5 member</span>
+                            </label>
+                        </div>
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Participant Requirements *</label>

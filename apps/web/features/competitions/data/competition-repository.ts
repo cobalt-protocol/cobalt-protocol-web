@@ -1,22 +1,45 @@
 import type { Competition } from "../types"
-import { mockCompetitions } from "./competitions"
-import { fetchCompetitions } from "@/lib/competitions-api"
+import { fetchCompetitions, fetchCompetitionById } from "@/lib/competitions-api"
 
 export async function getCompetitions(): Promise<readonly Competition[]> {
   return fetchCompetitions()
 }
 
+export async function getCompetitionById(
+  id: string
+): Promise<Competition | undefined> {
+  // 1. Direct fetch from NestJS API endpoint GET /api/v1/competitions/:id
+  const directComp = await fetchCompetitionById(id)
+  if (directComp) {
+    return directComp
+  }
+
+  // 2. Fallback: Search in overall competitions list (by ID or slug)
+  const competitions = await getCompetitions()
+  const exactMatch = competitions.find(
+    (competition) => competition.id === id || competition.slug === id
+  )
+  if (exactMatch) return exactMatch
+
+  // 3. Fallback prefix/fuzzy match for slug variations
+  const idLower = id.toLowerCase()
+  return competitions.find(
+    (c) =>
+      c.slug.toLowerCase().startsWith(idLower) ||
+      idLower.startsWith(c.slug.toLowerCase())
+  )
+}
+
 export async function getCompetitionBySlug(
   slug: string
 ): Promise<Competition | undefined> {
-  const competitions = await getCompetitions()
-  return competitions.find(
-    (competition) => competition.slug === slug || competition.id === slug
-  )
+  return getCompetitionById(slug)
 }
 
 export async function getFeaturedCompetitions(): Promise<readonly Competition[]> {
   const competitions = await getCompetitions()
   return competitions.slice(0, 3)
 }
+
+
 

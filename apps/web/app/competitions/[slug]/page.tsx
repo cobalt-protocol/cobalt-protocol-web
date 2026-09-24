@@ -27,5 +27,5 @@ export default async function CompetitionPage({ params }: PageProps) {
   const { slug } = await params
   const competition = await getCompetitionBySlug(slug)
   if (!competition) notFound()
-  return <CompetitionDetail competition={competition} />
+  return <CompetitionDetail competition={competition} slug={slug} />
 }

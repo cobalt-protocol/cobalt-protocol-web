@@ -16,4 +16,6 @@ export interface BuilderProfile {
   institution: string
   pitch: string
   skills: BuilderSkill[]
+  github_link?: string
+  linkedin_link?: string
 }
