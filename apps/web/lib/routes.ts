@@ -5,7 +5,7 @@ export const routes = {
   dashboard: "/dashboard",
   organization: "/organization",
   createCompetition: "/competition/create",
-  competition: (id: string) => `/competition/${encodeURIComponent(id)}`,
+  competition: (id: string) => `/competitions/${encodeURIComponent(id)}`,
   joinTeam: (slug: string) =>
     `/competitions/${encodeURIComponent(slug)}/join-team`,
   workspace: (slug: string) => `/my-competitions/${encodeURIComponent(slug)}`,
