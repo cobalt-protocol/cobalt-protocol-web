@@ -150,7 +150,7 @@ export async function verifySignature(params: {
 }
 
 export async function getMe(token: string): Promise<UserProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/@me`, {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,

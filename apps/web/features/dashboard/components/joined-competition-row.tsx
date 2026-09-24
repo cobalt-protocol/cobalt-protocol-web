@@ -7,6 +7,7 @@ import {
   Wallet,
   Zap,
 } from "lucide-react"
+import { useAccount } from "wagmi"
 import type { DashboardCompetition, DashboardPhase } from "../types"
 import { phaseBadges } from "../lib/dashboard-selectors"
 import { formatMoney } from "@/lib/format"
@@ -52,6 +53,12 @@ export function JoinedCompetitionRow({
   competition: DashboardCompetition
   onAction: () => void
 }) {
+  const { chain } = useAccount()
+  const rawTxHash = competition.txHash || competition.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`
+  const explorerBaseUrl = (chain?.blockExplorers?.default?.url || "https://scan.bohr.life").replace(/\/$/, "")
+  const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`
+
   const styles = phaseStyles[competition.phase]
   const ActionIcon =
     competition.phase === "registration"
@@ -79,7 +86,14 @@ export function JoinedCompetitionRow({
           </span>
         </div>
         <h3 className="mt-3 text-lg leading-snug font-bold tracking-tight sm:text-xl">
-          {competition.title}
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline hover:text-primary transition-colors"
+          >
+            {competition.title}
+          </a>
         </h3>
         <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
           <span className="inline-flex items-center gap-1">

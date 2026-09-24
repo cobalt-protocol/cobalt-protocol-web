@@ -95,11 +95,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
   const [sessionToken, setSessionToken] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
-      return (
-        window.localStorage.getItem("accessToken") ||
-        window.localStorage.getItem("cobalt:access_token") ||
-        window.localStorage.getItem("cobalt:session_token")
-      )
+      return window.localStorage.getItem("cobalt:access_token")
     }
     return null
   })
@@ -197,7 +193,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         if (!isMounted) return
 
         const currentNonce = nonceRes.data.nonce
-        const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress!.toLowerCase()}\nNonce: ${currentNonce}`
+        const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress!}\nNonce: ${currentNonce}`
 
         setNonce(currentNonce)
         setNonceMessage(nonceMsg)
@@ -236,18 +232,19 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           const userObj = verifyRes.data.user
           const role = userObj?.role || "user"
           if (typeof window !== "undefined") {
-            window.localStorage.setItem("accessToken", token)
             window.localStorage.setItem("cobalt:access_token", token)
-            window.localStorage.setItem("cobalt:session_token", token)
-            window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress!.toLowerCase())
+            window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress!)
             window.localStorage.setItem("cobalt:user_role", role)
             window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
           }
           setSessionToken(token)
-          setAuthenticatedAddress(effectiveAddress!.toLowerCase())
+          setAuthenticatedAddress(effectiveAddress!)
           setUserRole(role)
           setUser(userObj)
           console.log("Connect wallet berhasil! Session authenticated via viem & API verification for:", effectiveAddress, "Role:", role)
+          if (typeof window !== "undefined") {
+            window.location.reload()
+          }
         } else {
           throw new Error("Verifikasi signature gagal.")
         }
@@ -264,9 +261,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         // Abort wallet connection on failure so it doesn't state as connected
         if (typeof window !== "undefined") {
           window.localStorage.setItem("cobalt:disconnected", "true")
-          window.localStorage.removeItem("accessToken")
           window.localStorage.removeItem("cobalt:access_token")
-          window.localStorage.removeItem("cobalt:session_token")
           window.localStorage.removeItem("cobalt:authenticated_address")
           window.localStorage.removeItem("cobalt:user_role")
           window.localStorage.removeItem("cobalt:user")
@@ -405,9 +400,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   async function handleDisconnectWallet() {
     if (typeof window !== "undefined") {
       window.localStorage.setItem("cobalt:disconnected", "true")
-      window.localStorage.removeItem("accessToken")
       window.localStorage.removeItem("cobalt:access_token")
-      window.localStorage.removeItem("cobalt:session_token")
       window.localStorage.removeItem("cobalt:authenticated_address")
       window.localStorage.removeItem("cobalt:user_role")
       window.localStorage.removeItem("cobalt:user")
@@ -436,6 +429,10 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     setSessionConnected(saveConnected(false) ? null : false)
     setDialog(null)
     setNotice(null)
+
+    if (typeof window !== "undefined") {
+      window.location.reload()
+    }
   }
 
   async function handleSwitchNetwork() {
@@ -547,7 +544,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
             try {
               const nonceRes = await generateNonce(effectiveAddress)
               currentNonce = nonceRes.data.nonce
-              messageToSign = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress.toLowerCase()}\nNonce: ${currentNonce}`
+              messageToSign = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress}\nNonce: ${currentNonce}`
               setNonce(currentNonce)
               setNonceMessage(messageToSign)
             } finally {
@@ -586,15 +583,13 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
                 const userObj = verifyRes.data.user
                 const role = userObj?.role || "user"
                 if (typeof window !== "undefined") {
-                  window.localStorage.setItem("accessToken", token)
                   window.localStorage.setItem("cobalt:access_token", token)
-                  window.localStorage.setItem("cobalt:session_token", token)
-                  window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress.toLowerCase())
+                  window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress)
                   window.localStorage.setItem("cobalt:user_role", role)
                   window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
                 }
                 setSessionToken(token)
-                setAuthenticatedAddress(effectiveAddress.toLowerCase())
+                setAuthenticatedAddress(effectiveAddress)
                 setUserRole(role)
                 setUser(userObj)
               }
@@ -614,7 +609,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
             try {
               const nonceRes = await generateNonce(effectiveAddress)
               const currentNonce = nonceRes.data.nonce
-              const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress.toLowerCase()}\nNonce: ${currentNonce}`
+              const nonceMsg = `Sign this message to authenticate with Cobalt Protocol.\n\nWallet: ${effectiveAddress}\nNonce: ${currentNonce}`
               setNonce(currentNonce)
               setNonceMessage(nonceMsg)
               setSignature(null)

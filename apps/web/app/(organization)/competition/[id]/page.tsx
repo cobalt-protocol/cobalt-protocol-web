@@ -1,10 +1,10 @@
 'use client';
 
-import React, { use, useState } from 'react';
+import React, { use, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useQuery } from '@tanstack/react-query';
 import { useAccount } from 'wagmi';
-import { fetchApiCompetitionById, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol } from '@/lib/competitions-api';
+import { fetchApiCompetitionById, fetchTokenPrizeByCompetitionId, fetchApiMe, getStoredToken, formatTokenPrize, getTokenSymbol } from '@/lib/competitions-api';
 import {
     Search,
     BookOpen,
@@ -110,9 +110,19 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
     const resolvedParams = use(params);
     const id = resolvedParams.id;
     const [searchQuery, setSearchQuery] = useState("");
+    const [storedToken, setStoredToken] = useState<string | null>(null);
+
+    useEffect(() => {
+        setStoredToken(getStoredToken());
+    }, []);
 
     const { chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
+
+    const { data: meUser } = useQuery({
+        queryKey: ["user-me", storedToken],
+        queryFn: () => fetchApiMe(storedToken || getStoredToken()),
+    });
 
     const { data: apiCompetition, isLoading } = useQuery({
         queryKey: ["competition", id],
@@ -126,6 +136,12 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
         enabled: Boolean(id),
     });
 
+    const isOwner = Boolean(
+        apiCompetition?.user_id &&
+        meUser?.id &&
+        apiCompetition.user_id === meUser.id
+    );
+
     const filteredTeams = teamsData.filter(
         (team) =>
             team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -133,9 +149,14 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
     );
 
     const title = apiCompetition?.name || "Autonomous Agents Global Hackathon 2025";
+    const rawTxHash = apiCompetition?.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+    const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`;
     const category = apiCompetition?.category || "AI & Autonomous Systems";
+    const ipfsGatewayUrl = (process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || "http://localhost:8081/ipfs").replace(/\/$/, "");
     const guidebookUrl = apiCompetition?.guidebook_cid
-        ? `https://ipfs.io/ipfs/${apiCompetition.guidebook_cid}`
+        ? apiCompetition.guidebook_cid.startsWith("http://") || apiCompetition.guidebook_cid.startsWith("https://")
+            ? apiCompetition.guidebook_cid
+            : `${ipfsGatewayUrl}/${apiCompetition.guidebook_cid.replace(/^ipfs:\/\//, "")}`
         : null;
 
     const startDateLabel = formatDate(apiCompetition?.registration_window);
@@ -152,10 +173,11 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
         return `75,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
     }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol]);
 
-    const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0xCE5604583F54D41DC2f95B93c5291294830C728A';
-    const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0xd09e0B06B087cFBab1B33c9c5c4d4f535d8EbcD3';
+    const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0x3fA5bCC0f97ffd83Dcc92176751eDF65F98D1c61';
+    const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0x29bBE85C2C893A7515Cda962F849B7D43ccFa9CA';
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
+    const competitionTxUrl = `${explorerBaseUrl}/tx/${txHash}`;
     const competitionContractUrl = `${explorerBaseUrl}/address/${competitionContractAddress}`;
     const treasuryPrizeContractUrl = `${explorerBaseUrl}/address/${treasuryPrizeContractAddress}`;
     return (
@@ -194,7 +216,16 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
                                         <span className="w-1.5 h-1.5 rounded-full bg-blue-600 mr-2" />
                                         Judging & Evaluation Phase (Submissions Closed)
                                     </Badge>
-                                    <h2 className="text-3xl font-bold text-slate-900">{title}</h2>
+                                    <h2 className="text-3xl font-bold text-slate-900">
+                                        <a
+                                            href={competitionTxUrl}
+                                            target="_blank"
+                                            rel="noopener noreferrer"
+                                            className="hover:underline hover:text-blue-600 transition-colors"
+                                        >
+                                            {title}
+                                        </a>
+                                    </h2>
                                     {apiCompetition?.description && (
                                         <p className="text-slate-500 text-sm max-w-3xl">{apiCompetition.description}</p>
                                     )}
@@ -213,12 +244,14 @@ export default function CompetitionDetail({ params }: { params: Promise<{ id: st
                                             View Guidebook
                                         </Button>
                                     )}
-                                    <Link href={`/competition/${id}/winner`}>
-                                        <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
-                                            <Trophy className="w-4 h-4 mr-2" />
-                                            Determine Winner
-                                        </Button>
-                                    </Link>
+                                    {isOwner && (
+                                        <Link href={`/competition/${id}/winner`}>
+                                            <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
+                                                <Trophy className="w-4 h-4 mr-2" />
+                                                Determine Winner
+                                            </Button>
+                                        </Link>
+                                    )}
                                 </div>
                             </div>
 

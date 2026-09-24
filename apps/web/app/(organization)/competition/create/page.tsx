@@ -1,8 +1,10 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
-import { Input } from '@workspace/ui/components/input';
+import React, { useState, useRef, useEffect } from 'react';
+import { ChevronRight, Calendar as CalendarIconLucide, Clock, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseEther, parseUnits, getAddress } from 'viem';
+import CompetitionManagerABI from '@/abi/CompetitionManager.json';
 import {
     Select,
     SelectContent,
@@ -11,6 +13,7 @@ import {
     SelectValue,
 } from '@workspace/ui/components/select';
 import { DateTimePicker } from '@/components/ui/date-picker';
+import { fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, type ApiListingTokenPrize } from '@/lib/competitions-api';
 
 // --- KUMPULAN IKON SVG ---
 const InfoIcon = () => (
@@ -86,7 +89,7 @@ const CertificateFileInput = ({
     fileName,
     onFileChange,
     label = "Certificate Template",
-    accept = ".pdf,.png,.jpg,.jpeg",
+    accept = "image/*",
 }: CertificateFileInputProps) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -212,31 +215,162 @@ interface PrizeCategory {
     place: string;
     amount: string;
     file: string;
+    fileObj?: File | null;
 }
 
 const INITIAL_PRIZES: PrizeCategory[] = [
-    { place: '1st Place Champion', amount: '35,000', file: 'Upload1.pdf' },
-    { place: '2nd Place', amount: '20,000', file: 'Upload2.pdf' },
-    { place: '3rd Place', amount: '10,000', file: 'Upload3.pdf' },
+    { place: '1st Place Champion', amount: '30', file: 'Upload1.png', fileObj: null },
+    { place: '2nd Place', amount: '20', file: 'Upload2.png', fileObj: null },
+    { place: '3rd Place', amount: '10', file: 'Upload3.png', fileObj: null },
 ];
+
+async function uploadToKuboIPFS(file: File): Promise<string> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        // Use local Next.js API route (/api/ipfs) as proxy to avoid browser CORS issues with Kubo IPFS RPC on port 5001
+        const res = await fetch('/api/ipfs', {
+            method: 'POST',
+            body: formData,
+        });
+
+        if (!res.ok) {
+            console.warn(`IPFS upload API returned status ${res.status}`);
+            return file.name || 'QmDefaultMockCID';
+        }
+
+        const data = await res.json();
+        const cid: string = data.cid || data.hash || data.Hash || '';
+        if (!cid) {
+            return file.name || 'QmDefaultMockCID';
+        }
+        return cid;
+    } catch (err) {
+        console.warn('Kubo IPFS upload fetch error, falling back:', err);
+        return file.name || 'QmDefaultMockCID';
+    }
+}
 
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
+    const publicClient = usePublicClient();
+    const { address, isConnected, chain } = useAccount();
+    const { writeContractAsync, data: txHash, isPending: isWritePending, error: writeError } = useWriteContract();
+    const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
+
+    const [txErrorCustom, setTxErrorCustom] = useState<string | null>(null);
+    const [isUploadingIpfs, setIsUploadingIpfs] = useState(false);
+
+    const [name, setName] = useState('Autonomous Agents Global Hackathon 2025');
     const [category, setCategory] = useState('AI & Autonomous Systems');
+    const [description, setDescription] = useState(
+        'The Autonomous Agents Global Hackathon 2025 invites world-class AI engineers, cryptography researchers, and smart-contract developers to architect, stress-test, and deploy production-ready autonomous agent clusters. Teams will build verifiable execution runtimes leveraging zero-knowledge proofs and decentralized identity primitives.'
+    );
+    const [requirements, setRequirements] = useState(
+        '- Teams of 1 to 5 members are permitted.\n- Open-source codebase with permissive MIT or Apache 2.0 licensing.\n- Must provide functional public GitHub repository with reproducible test suites.\n- Use of local wallet architecture is not mandatory; however, it is highly recommended.'
+    );
     const [prizes, setPrizes] = useState<PrizeCategory[]>(INITIAL_PRIZES);
-    const [participantCertificate, setParticipantCertificate] = useState('Upload4.pdf');
+    const [participantCertificate, setParticipantCertificate] = useState('Upload4.png');
+    const [participantCertificateFile, setParticipantCertificateFile] = useState<File | null>(null);
+    const [guidebookFile, setGuidebookFile] = useState('Official_Hackathon_Guidebook_v2.4.pdf');
+    const [guidebookFileObj, setGuidebookFileObj] = useState<File | null>(null);
+    const [priceCompetitionFeeId, setPriceCompetitionFeeId] = useState('1');
+    const [feeCompetitionTitle, setFeeCompetitionTitle] = useState<string>('');
+    const [feeTreasuryAmount, setFeeTreasuryAmount] = useState<string>('0');
+    const [feeTokenAddress, setFeeTokenAddress] = useState<string>('0x0000000000000000000000000000000000000000');
+    const [isLoadingPriceComp, setIsLoadingPriceComp] = useState<boolean>(false);
+
+    const [listingTokens, setListingTokens] = useState<ApiListingTokenPrize[]>([]);
+    const [selectedTokenAddress, setSelectedTokenAddress] = useState<string>('0x0000000000000000000000000000000000000000');
+    const [tokenSymbol, setTokenSymbol] = useState<string>('USDC');
+
+    useEffect(() => {
+        async function loadPriceCompetition() {
+            const targetId = priceCompetitionFeeId || '1';
+            setIsLoadingPriceComp(true);
+            const priceComp = await fetchPriceCompetitionById(targetId);
+            if (priceComp) {
+                if (priceComp.title) setFeeCompetitionTitle(priceComp.title);
+                if (priceComp.treasury_fee) setFeeTreasuryAmount(priceComp.treasury_fee);
+                if (priceComp.token_address) setFeeTokenAddress(priceComp.token_address);
+            } else {
+                setFeeCompetitionTitle('');
+            }
+            setIsLoadingPriceComp(false);
+        }
+        loadPriceCompetition();
+    }, [priceCompetitionFeeId]);
+
+    useEffect(() => {
+        async function loadListingTokenPrizes() {
+            const tokens = await fetchListingTokenPrizes();
+            if (tokens && tokens.length > 0) {
+                setListingTokens(tokens);
+                const activeToken = tokens.find((t) => t.is_active) || tokens[0];
+                if (activeToken?.token_address) {
+                    setSelectedTokenAddress(activeToken.token_address);
+                    const formattedSymbol = getTokenSymbol(
+                        activeToken.token_address,
+                        chain?.nativeCurrency?.symbol,
+                        activeToken.symbol || activeToken.token_symbol
+                    );
+                    setTokenSymbol(formattedSymbol);
+                }
+            } else {
+                const defaultSymbol = getTokenSymbol(selectedTokenAddress, chain?.nativeCurrency?.symbol);
+                setTokenSymbol(defaultSymbol);
+            }
+        }
+        loadListingTokenPrizes();
+    }, [chain?.nativeCurrency?.symbol]);
 
     const [duration, setDuration] = useState({
-        registrationStart: '2025-04-01T09:00',
-        registrationEnd: '2025-04-20T23:59',
-        competitionStart: '2025-04-22T12:01',
-        competitionEnd: '2025-05-16T23:59',
-        submissionDeadline: '2025-05-16T23:59',
-        judgingStart: '2025-05-16T09:00',
-        judgingEnd: '2025-05-22T06:00',
-        resultsAnnouncement: '2025-05-24T15:00',
-        prizeClaimStart: '2025-05-25T10:00',
+        registrationStart: '',
+        registrationEnd: '',
+        competitionStart: '',
+        competitionEnd: '',
+        submissionDeadline: '',
+        judgingStart: '',
+        judgingEnd: '',
+        resultsAnnouncement: '',
+        prizeClaimStart: '',
     });
+
+    useEffect(() => {
+        const now = new Date();
+        const base = new Date(now.getTime() + 60 * 60 * 1000);
+        base.setSeconds(0, 0);
+
+        const addDays = (d: Date, days: number) => new Date(d.getTime() + days * 86400000);
+
+        const regStart = base;
+        const regEnd = addDays(regStart, 7);
+        const compStart = regEnd;
+        const compEnd = addDays(compStart, 7);
+        const subDeadline = compEnd;
+        const judgingStart = compEnd;
+        const judgingEnd = addDays(judgingStart, 4);
+        const resultsAnnounce = addDays(judgingEnd, 2);
+        const prizeClaim = addDays(resultsAnnounce, 1);
+
+        const fmt = (dt: Date) => {
+            const pad = (n: number) => String(n).padStart(2, '0');
+            return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}T${pad(dt.getHours())}:${pad(dt.getMinutes())}`;
+        };
+
+        setDuration({
+            registrationStart: fmt(regStart),
+            registrationEnd: fmt(regEnd),
+            competitionStart: fmt(compStart),
+            competitionEnd: fmt(compEnd),
+            submissionDeadline: fmt(subDeadline),
+            judgingStart: fmt(judgingStart),
+            judgingEnd: fmt(judgingEnd),
+            resultsAnnouncement: fmt(resultsAnnounce),
+            prizeClaimStart: fmt(prizeClaim),
+        });
+    }, []);
 
     const handleDurationChange = (key: keyof typeof duration, val: string) => {
         setDuration((prev) => ({ ...prev, [key]: val }));
@@ -251,9 +385,14 @@ export default function CreateCompetition() {
     const handleCertificateChange = (index: number, file: File | null) => {
         setPrizes((prev) =>
             prev.map((item, i) =>
-                i === index ? { ...item, file: file ? file.name : '' } : item
+                i === index ? { ...item, file: file ? file.name : '', fileObj: file } : item
             )
         );
+    };
+
+    const handleParticipantCertificateChange = (file: File | null) => {
+        setParticipantCertificate(file ? file.name : '');
+        setParticipantCertificateFile(file);
     };
 
     const handleAddPrize = () => {
@@ -261,8 +400,24 @@ export default function CreateCompetition() {
         const ordinal = nextNum === 4 ? '4th' : nextNum === 5 ? '5th' : `${nextNum}th`;
         setPrizes((prev) => [
             ...prev,
-            { place: `${ordinal} Place`, amount: '0', file: '' },
+            { place: `${ordinal} Place`, amount: '0', file: '', fileObj: null },
         ]);
+    };
+
+    const guidebookInputRef = useRef<HTMLInputElement>(null);
+
+    const competitionContractAddress = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT ||
+        process.env.COMPETITION_CONTRACT ||
+        '0x3fA5bCC0f97ffd83Dcc92176751eDF65F98D1c61') as `0x${string}`;
+
+    const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
+
+    const handleGuidebookSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0] || null;
+        if (file) {
+            setGuidebookFile(file.name);
+            setGuidebookFileObj(file);
+        }
     };
 
     const handleRemovePrize = (index: number) => {
@@ -274,6 +429,326 @@ export default function CreateCompetition() {
         const parsed = parseFloat(p.amount.replace(/,/g, ''));
         return acc + (isNaN(parsed) ? 0 : parsed);
     }, 0);
+
+    // --- Executing createCompetition function on CompetitionManager ---
+    const handleCreateCompetition = async () => {
+        setTxErrorCustom(null);
+
+        if (!isConnected || !address) {
+            setTxErrorCustom('Please connect your Web3 wallet before publishing the competition.');
+            return;
+        }
+
+        if (!name.trim()) {
+            setTxErrorCustom('Competition Name is required.');
+            return;
+        }
+
+        try {
+            setIsUploadingIpfs(true);
+
+            // Upload files to Kubo IPFS to obtain CIDs
+            const winnerCIDs = await Promise.all(
+                prizes.map(async (p) => {
+                    if (p.fileObj) {
+                        return await uploadToKuboIPFS(p.fileObj);
+                    }
+                    return p.file || '';
+                })
+            );
+
+            let participantCertCID = participantCertificate;
+            if (participantCertificateFile) {
+                participantCertCID = await uploadToKuboIPFS(participantCertificateFile);
+            }
+
+            let guidebookCID = guidebookFile;
+            if (guidebookFileObj) {
+                guidebookCID = await uploadToKuboIPFS(guidebookFileObj);
+            }
+
+            setIsUploadingIpfs(false);
+
+            const toUnix = (dtStr: string): bigint => {
+                if (!dtStr) return 0n;
+                const ts = Math.floor(new Date(dtStr).getTime() / 1000);
+                return isNaN(ts) ? 0n : BigInt(ts);
+            };
+
+            const _competition = {
+                id: 0n,
+                name: name.trim(),
+                category: category.trim(),
+                description: description.trim(),
+                requirements: requirements.trim(),
+                organization: address as `0x${string}`,
+                schedule: {
+                    registrationWindow: toUnix(duration.registrationEnd || duration.registrationStart),
+                    competitionWindow: toUnix(duration.competitionEnd || duration.competitionStart),
+                    submissionDeadline: toUnix(duration.submissionDeadline),
+                    judgingReview: toUnix(duration.judgingEnd || duration.judgingStart),
+                    resultAnnouncement: toUnix(duration.resultsAnnouncement),
+                    prizeCertificateClaim: toUnix(duration.prizeClaimStart),
+                },
+                certificateCID: participantCertCID || '',
+                guideBookCID: guidebookCID || '',
+            };
+
+            const getTokenDecimals = async (tokenAddress: string): Promise<number> => {
+                if (!tokenAddress || tokenAddress === '0x0000000000000000000000000000000000000000' || tokenAddress === '0x0') {
+                    return 18;
+                }
+                if (publicClient) {
+                    try {
+                        const dec = await publicClient.readContract({
+                            address: tokenAddress as `0x${string}`,
+                            abi: [
+                                {
+                                    constant: true,
+                                    inputs: [],
+                                    name: 'decimals',
+                                    outputs: [{ name: '', type: 'uint8' }],
+                                    payable: false,
+                                    stateMutability: 'view',
+                                    type: 'function',
+                                },
+                            ],
+                            functionName: 'decimals',
+                        });
+                        return Number(dec);
+                    } catch (e) {
+                        console.warn('Could not fetch token decimals on-chain, falling back to 18:', e);
+                    }
+                }
+                return 18;
+            };
+
+            const prizeTokenDecimals = await getTokenDecimals(selectedTokenAddress);
+
+            const _winners = prizes.map((p, index) => {
+                const rawAmount = p.amount.replace(/,/g, '').trim();
+                let prizeAmountBigInt = 0n;
+                try {
+                    prizeAmountBigInt = parseUnits(rawAmount || '0', prizeTokenDecimals);
+                } catch {
+                    prizeAmountBigInt = 0n;
+                }
+                return {
+                    id: BigInt(index + 1),
+                    competitionId: 0n,
+                    title: p.place.trim(),
+                    prizeToken: (selectedTokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+                    prizeAmount: prizeAmountBigInt,
+                    certificateCID: winnerCIDs[index] || '',
+                };
+            });
+
+            const feeIdBigInt = BigInt(priceCompetitionFeeId || 0);
+
+            const isNativePrizeToken =
+                !selectedTokenAddress ||
+                selectedTokenAddress === '0x0000000000000000000000000000000000000000' ||
+                selectedTokenAddress === '0x0';
+
+            const isNativeFeeToken =
+                !feeTokenAddress ||
+                feeTokenAddress === '0x0000000000000000000000000000000000000000' ||
+                feeTokenAddress === '0x0';
+
+            const totalPrizeWei = _winners.reduce((acc, w) => acc + w.prizeAmount, 0n);
+
+            let feeWei = 0n;
+            if (feeTreasuryAmount) {
+                try {
+                    feeWei = typeof feeTreasuryAmount === 'string' && feeTreasuryAmount.includes('.')
+                        ? parseEther(feeTreasuryAmount)
+                        : BigInt(feeTreasuryAmount);
+                } catch {
+                    feeWei = 0n;
+                }
+            }
+
+            let txValue = 0n;
+            if (isNativeFeeToken) {
+                txValue += feeWei;
+            }
+            if (isNativePrizeToken) {
+                txValue += totalPrizeWei;
+            }
+
+            // Pre-flight check: Verify prize token is listed and active on ListingTokenPrizeContract
+            let listingTokenPrizeAddress = process.env.NEXT_PUBLIC_LISTING_TOKEN_PRIZE_CONTRACT as `0x${string}`;
+            if (!listingTokenPrizeAddress && publicClient) {
+                try {
+                    listingTokenPrizeAddress = await publicClient.readContract({
+                        address: getAddress(competitionContractAddress),
+                        abi: CompetitionManagerABI as any,
+                        functionName: 'listingTokenPrizeContract',
+                    }) as `0x${string}`;
+                } catch (e) {
+                    console.warn('Could not fetch listingTokenPrizeContract:', e);
+                }
+            }
+
+            if (listingTokenPrizeAddress && publicClient) {
+                try {
+                    const prizeTokenAddr = getAddress(selectedTokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`;
+                    const listingTokenAbi = [
+                        {
+                            constant: true,
+                            inputs: [{ name: '_tokenAddress', type: 'address' }],
+                            name: 'listingToken',
+                            outputs: [
+                                { name: 'id', type: 'uint256' },
+                                { name: 'tokenAddress', type: 'address' },
+                                { name: 'isActive', type: 'bool' },
+                            ],
+                            payable: false,
+                            stateMutability: 'view',
+                            type: 'function',
+                        },
+                    ] as const;
+
+                    const tokenInfo = await publicClient.readContract({
+                        address: listingTokenPrizeAddress,
+                        abi: listingTokenAbi,
+                        functionName: 'listingToken',
+                        args: [prizeTokenAddr],
+                    }) as [bigint, `0x${string}`, boolean];
+
+                    const [listingId, , isPrizeActive] = tokenInfo;
+                    if (listingId === 0n) {
+                        setTxErrorCustom(`Prize token (${prizeTokenAddr}) is not listed in ListingTokenPrizeContract.`);
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+                    if (!isPrizeActive) {
+                        setTxErrorCustom(`Prize token (${prizeTokenAddr}) is deactivated in ListingTokenPrizeContract.`);
+                        setIsUploadingIpfs(false);
+                        return;
+                    }
+                } catch (e) {
+                    console.warn('Error checking prize token listing status:', e);
+                }
+            }
+
+            const erc20Abi = [
+                {
+                    constant: true,
+                    inputs: [
+                        { name: '_owner', type: 'address' },
+                        { name: '_spender', type: 'address' },
+                    ],
+                    name: 'allowance',
+                    outputs: [{ name: '', type: 'uint256' }],
+                    payable: false,
+                    stateMutability: 'view',
+                    type: 'function',
+                },
+                {
+                    constant: false,
+                    inputs: [
+                        { name: '_spender', type: 'address' },
+                        { name: '_value', type: 'uint256' },
+                    ],
+                    name: 'approve',
+                    outputs: [{ name: '', type: 'bool' }],
+                    payable: false,
+                    stateMutability: 'nonpayable',
+                    type: 'function',
+                },
+            ] as const;
+
+            // Check and approve ERC20 Fee Token allowance if needed
+            if (!isNativeFeeToken && feeWei > 0n && publicClient) {
+                let treasuryPlatformAddress = process.env.NEXT_PUBLIC_TREASURY_PLATFORM_CONTRACT as `0x${string}`;
+                if (!treasuryPlatformAddress) {
+                    try {
+                        treasuryPlatformAddress = await publicClient.readContract({
+                            address: competitionContractAddress,
+                            abi: CompetitionManagerABI as any,
+                            functionName: 'treasuryPlatformContract',
+                        }) as `0x${string}`;
+                    } catch (e) {
+                        console.warn('Could not fetch treasuryPlatformContract:', e);
+                    }
+                }
+
+                if (treasuryPlatformAddress) {
+                    const allowanceFee = await publicClient.readContract({
+                        address: feeTokenAddress as `0x${string}`,
+                        abi: erc20Abi,
+                        functionName: 'allowance',
+                        args: [address, treasuryPlatformAddress],
+                    }) as bigint;
+
+                    if (allowanceFee < feeWei) {
+                        const approveFeeTx = await writeContractAsync({
+                            address: feeTokenAddress as `0x${string}`,
+                            abi: erc20Abi,
+                            functionName: 'approve',
+                            args: [treasuryPlatformAddress, feeWei],
+                        });
+                        if (publicClient) {
+                            await publicClient.waitForTransactionReceipt({ hash: approveFeeTx });
+                        }
+                    }
+                }
+            }
+
+            // Check and approve ERC20 Prize Token allowance if needed
+            if (!isNativePrizeToken && totalPrizeWei > 0n && publicClient) {
+                let treasuryPrizeAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT as `0x${string}`;
+                if (!treasuryPrizeAddress) {
+                    try {
+                        treasuryPrizeAddress = await publicClient.readContract({
+                            address: competitionContractAddress,
+                            abi: CompetitionManagerABI as any,
+                            functionName: 'treasuryPrizeContract',
+                        }) as `0x${string}`;
+                    } catch (e) {
+                        console.warn('Could not fetch treasuryPrizeContract:', e);
+                    }
+                }
+
+                if (treasuryPrizeAddress) {
+                    const allowancePrize = await publicClient.readContract({
+                        address: selectedTokenAddress as `0x${string}`,
+                        abi: erc20Abi,
+                        functionName: 'allowance',
+                        args: [address, treasuryPrizeAddress],
+                    }) as bigint;
+
+                    if (allowancePrize < totalPrizeWei) {
+                        const approvePrizeTx = await writeContractAsync({
+                            address: selectedTokenAddress as `0x${string}`,
+                            abi: erc20Abi,
+                            functionName: 'approve',
+                            args: [treasuryPrizeAddress, totalPrizeWei],
+                        });
+                        if (publicClient) {
+                            await publicClient.waitForTransactionReceipt({ hash: approvePrizeTx });
+                        }
+                    }
+                }
+            }
+
+            await writeContractAsync({
+                address: competitionContractAddress,
+                abi: CompetitionManagerABI as any,
+                functionName: 'createCompetition',
+                args: [_competition, _winners, feeIdBigInt],
+                value: txValue,
+            });
+        } catch (err: any) {
+            console.error('createCompetition error:', err);
+            setIsUploadingIpfs(false);
+            setTxErrorCustom(err?.shortMessage || err?.message || 'Failed to complete process');
+        }
+    };
+
+    const isProcessing = isWritePending || isConfirming;
+    const activeError = txErrorCustom || (writeError ? (writeError as any).shortMessage || writeError.message : null);
     return (
         <div className="w-full bg-[#F8F9FF] py-10 font-sans text-slate-800">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
@@ -309,7 +784,8 @@ export default function CreateCompetition() {
                             <input
                                 type="text"
                                 className="w-full bg-white border border-slate-200/80 text-slate-700 py-2.5 px-4 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                                defaultValue="Autonomous Agents Global Hackathon 2025"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
                             />
                         </div>
                         <div>
@@ -339,11 +815,21 @@ export default function CreateCompetition() {
                 >
                     <div className="mb-6">
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Description *</label>
-                        <textarea rows={3} className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs" defaultValue="The Autonomous Agents Global Hackathon 2025 invites world-class AI engineers, cryptography researchers, and smart-contract developers to architect, stress-test, and deploy production-ready autonomous agent clusters. Teams will build verifiable execution runtimes leveraging zero-knowledge proofs and decentralized identity primitives."></textarea>
+                        <textarea
+                            rows={3}
+                            className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs"
+                            value={description}
+                            onChange={(e) => setDescription(e.target.value)}
+                        />
                     </div>
                     <div>
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Participant Requirements *</label>
-                        <textarea rows={3} className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs" defaultValue="- Teams of 1 to 5 members are permitted.&#10;- Open-source codebase with permissive MIT or Apache 2.0 licensing.&#10;- Must provide functional public GitHub repository with reproducible test suites.&#10;- Use of local wallet architecture is not mandatory; however, it is highly recommended."></textarea>
+                        <textarea
+                            rows={3}
+                            className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs"
+                            value={requirements}
+                            onChange={(e) => setRequirements(e.target.value)}
+                        />
                     </div>
                 </SectionCard>
 
@@ -433,20 +919,57 @@ export default function CreateCompetition() {
                                     <div className="md:col-span-4 relative">
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Amount</label>
                                         <div className="relative">
-                                            <span className="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 text-sm">$</span>
                                             <input
                                                 type="text"
-                                                className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 pl-7 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
+                                                className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                                                 value={prize.amount}
                                                 onChange={(e) => handlePrizeChange(index, 'amount', e.target.value)}
                                             />
-                                            <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs font-semibold">USDC</span>
+                                            <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 text-xs font-semibold">
+                                                {listingTokens.length > 1 ? (
+                                                    <Select
+                                                        value={selectedTokenAddress}
+                                                        onValueChange={(val) => {
+                                                            if (!val) return;
+                                                            setSelectedTokenAddress(val);
+                                                            const selectedItem = listingTokens.find((t) => t.token_address === val);
+                                                            const sym = getTokenSymbol(
+                                                                val,
+                                                                chain?.nativeCurrency?.symbol,
+                                                                selectedItem?.symbol || selectedItem?.token_symbol
+                                                            );
+                                                            setTokenSymbol(sym);
+                                                        }}
+                                                    >
+                                                        <SelectTrigger className="h-5 text-xs border-none bg-transparent p-0 text-slate-400 font-semibold focus:ring-0 shadow-none gap-0.5">
+                                                            <SelectValue>{tokenSymbol}</SelectValue>
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            {listingTokens.map((t) => {
+                                                                const sym = getTokenSymbol(
+                                                                    t.token_address,
+                                                                    chain?.nativeCurrency?.symbol,
+                                                                    t.symbol || t.token_symbol
+                                                                );
+                                                                return (
+                                                                    <SelectItem key={t.id} value={t.token_address}>
+                                                                        {sym}
+                                                                    </SelectItem>
+                                                                );
+                                                            })}
+                                                        </SelectContent>
+                                                    </Select>
+                                                ) : (
+                                                    tokenSymbol
+                                                )}
+                                            </span>
                                         </div>
                                     </div>
                                     <div className={!isDefaultCard ? "md:col-span-3" : "md:col-span-4"}>
                                         <CertificateFileInput
                                             fileName={prize.file}
                                             onFileChange={(file) => handleCertificateChange(index, file)}
+                                            accept="image/*"
                                         />
                                     </div>
                                     {!isDefaultCard && (
@@ -475,7 +998,6 @@ export default function CreateCompetition() {
                         <span>Add Prize Category</span>
                     </button>
 
-                    {/* PARTICIPANT CERTIFICATE (SEPARATE INPUT) */}
                     <div className="mt-6 pt-5 border-t border-slate-200/80">
                         <div className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-4 items-center">
                             <div className="md:col-span-8">
@@ -485,7 +1007,7 @@ export default function CreateCompetition() {
                             <div className="md:col-span-4">
                                 <CertificateFileInput
                                     fileName={participantCertificate}
-                                    onFileChange={(file) => setParticipantCertificate(file ? file.name : '')}
+                                    onFileChange={handleParticipantCertificateChange}
                                     label="Participant Certificate Image"
                                     accept="image/*"
                                 />
@@ -494,81 +1016,164 @@ export default function CreateCompetition() {
                     </div>
                 </SectionCard>
 
-                {/* SECTION 5: GUIDEBOOK */}
                 <SectionCard
                     icon={<BookIcon />}
                     title="5. Guidebook"
                     description="Provide participants with detailed competition guidelines and requirements."
                     step="STEP 05/06"
                 >
+                    <input
+                        type="file"
+                        ref={guidebookInputRef}
+                        onChange={handleGuidebookSelect}
+                        accept=".pdf,.md,.doc,.docx"
+                        className="hidden"
+                    />
 
-                    <div className="bg-[#EFF4FF] rounded-xl p-10 flex flex-col items-center justify-center text-center mb-4 cursor-pointer hover:bg-blue-50/50 transition-colors">
-                        <div className="bg-white p-3 rounded-full mb-4">
+                    <div
+                        onClick={() => guidebookInputRef.current?.click()}
+                        className="bg-[#EFF4FF] rounded-xl p-8 flex flex-col items-center justify-center text-center mb-4 cursor-pointer hover:bg-blue-50/70 border border-dashed border-blue-200 transition-colors"
+                    >
+                        <div className="bg-white p-3 rounded-full mb-3 shadow-xs">
                             <UploadIcon />
                         </div>
                         <h4 className="text-sm font-semibold text-slate-700 mb-1">Upload Guidebook</h4>
-                        <p className="text-xs text-slate-500 mb-3">Drag & drop PDF, Markdown file or browse</p>
+                        <p className="text-xs text-slate-500 mb-2">Drag & drop PDF or document file or browse</p>
                         <span className="text-xs font-semibold text-blue-600">Browse Local Files</span>
                     </div>
 
-                    <div className="flex items-center justify-between bg-[#EFF4FF] rounded-lg p-3">
-                        <div className="flex items-center space-x-3">
-                            <div className="bg-red-100 p-1.5 rounded text-red-500 text-[10px] font-bold">PDF</div>
-                            <div>
-                                <p className="text-sm font-semibold text-slate-700">Official_Hackathon_Guidebook_v2.4.pdf (4.2 MB)</p>
-                                <p className="text-[10px] text-slate-500">Uploaded successfully</p>
+                    {guidebookFile && (
+                        <div className="flex items-center justify-between bg-[#EFF4FF] rounded-lg p-3.5 border border-blue-100">
+                            <div className="flex items-center space-x-3">
+                                <div className="bg-red-500 text-white p-1.5 rounded text-[10px] font-bold tracking-wider">DOC</div>
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-700">{guidebookFile}</p>
+                                    <p className="text-[10px] text-green-600 font-medium">Selected for upload</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center space-x-3 text-slate-400">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setGuidebookFile('');
+                                        setGuidebookFileObj(null);
+                                    }}
+                                    className="hover:text-red-500 text-sm font-bold px-1"
+                                    title="Remove file"
+                                >
+                                    ✕
+                                </button>
                             </div>
                         </div>
-                        <div className="flex items-center space-x-3 text-gray-400">
-                            <button className="hover:text-slate-600">👁</button>
-                            <button className="hover:text-red-500">×</button>
-                        </div>
-                    </div>
+                    )}
                 </SectionCard>
 
-                {/* SECTION 6: PAYMENT */}
+                {/* SECTION 6: PAYMENT & PUBLISH */}
                 <SectionCard
                     icon={<CreditCardIcon />}
-                    title="6. Payment"
-                    description="Secure the competition prize before the competition is published."
+                    title="6. Payment & Fee Configuration"
+                    description="Configure pricing fee tier and confirm prize pool payment before publishing on-chain."
                     step="STEP 06/06"
                 >
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                         {/* Total Prize */}
-                        <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-center">
-                            <p className="text-xs font-semibold text-slate-500 mb-1">Total Prize Amount</p>
-                            <div className="flex items-end space-x-1 mb-2">
-                                <span className="text-2xl font-bold text-slate-800">${totalPrizeAmount.toLocaleString()}</span>
-                                <span className="text-xs font-semibold text-slate-500 mb-1">USDC</span>
+                        <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-center border border-blue-100">
+                            <p className="text-xs font-semibold text-slate-500 mb-1">Total Prize Pool</p>
+                            <div className="flex items-end space-x-1.5 mb-2">
+                                <span className="text-2xl font-bold text-slate-800">{totalPrizeAmount.toLocaleString()}</span>
+                                <span className="text-xs font-semibold text-slate-600 mb-1">{tokenSymbol}</span>
                             </div>
-                            <p className="text-[10px] text-slate-400">Calculated across {prizes.length} prize {prizes.length === 1 ? 'pool' : 'pools'}</p>
+                            <p className="text-[10px] text-slate-500">Calculated across {prizes.length} prize {prizes.length === 1 ? 'pool' : 'pools'}</p>
                         </div>
 
-                        {/* Wallet Info */}
-                        <div className="bg-[#EFF4FF] rounded-lg p-5">
-                            <p className="text-xs font-semibold text-slate-500 mb-2">Wallet / Payment Information</p>
-                            <div className="flex items-center space-x-2 mb-2">
-                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                                <span className="text-sm font-medium text-slate-700">Connected Multi-Sig Wallet</span>
-                            </div>
-                            <p className="text-[10px] text-slate-500 ml-4">• Arbitrum Escrow Vault v2.1</p>
-                        </div>
-
-                        {/* Payment Status */}
-                        <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-between">
+                        {/* Fee Competition */}
+                        <div className="bg-[#EFF4FF] rounded-lg p-5 border border-blue-100 flex flex-col justify-between">
                             <div>
-                                <p className="text-xs font-semibold text-slate-500 mb-2">Payment Status</p>
-                                <div className="flex space-x-2 mb-2">
-                                    <span className="bg-yellow-100 text-yellow-700 text-[10px] font-bold px-2 py-0.5 rounded">Unpaid / Pending</span>
-                                    <span className="bg-gray-200 text-gray-600 text-[10px] font-bold px-2 py-0.5 rounded">Escrowed</span>
+                                <p className="text-xs font-semibold text-slate-500 mb-2">Fee Competition</p>
+                                <div className="text-sm font-semibold text-slate-800">
+                                    {isLoadingPriceComp ? (
+                                        <span className="text-slate-400 font-normal">Loading...</span>
+                                    ) : feeCompetitionTitle ? (
+                                        <span className="text-blue-600 font-semibold">{feeCompetitionTitle}</span>
+                                    ) : (
+                                        <span className="text-slate-500 text-xs">Standard Price Competition</span>
+                                    )}
                                 </div>
-                                <p className="text-[10px] text-slate-500 mb-4">Prize funds must be transferred to the verifiable on-chain vault prior to network publishing.</p>
                             </div>
-                            <button className="w-full bg-[#2563EB] text-white text-xs font-semibold py-2 rounded-md hover:bg-blue-700 transition-colors">
-                                Secure Prize / Make Payment
-                            </button>
                         </div>
+
+                        {/* Contract Address Competition */}
+                        <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-between border border-blue-100">
+                            <div>
+                                <p className="text-xs font-semibold text-slate-500 mb-2">Contract Address Competition</p>
+                                <div className="flex items-center space-x-2">
+                                    <span className="text-xs font-mono font-semibold text-slate-700 break-all">
+                                        {competitionContractAddress}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* TRANSACTION STATUS FEEDBACK */}
+                    {activeError && (
+                        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start space-x-2">
+                            <span className="font-bold">Error:</span>
+                            <span className="break-all">{activeError}</span>
+                        </div>
+                    )}
+
+                    {isProcessing && (
+                        <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg text-blue-700 text-sm flex items-center space-x-3">
+                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                            <span>
+                                {isUploadingIpfs
+                                    ? 'Uploading certificate and guidebook files to Kubo IPFS (http://127.0.0.1:5001/api/v0/add)...'
+                                    : isWritePending
+                                        ? 'Awaiting transaction signature in wallet...'
+                                        : 'Transaction submitted! Waiting for block confirmation...'}
+                            </span>
+                        </div>
+                    )}
+
+                    {isSuccess && txHash && (
+                        <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg text-green-800 text-sm space-y-2">
+                            <div className="font-bold flex items-center space-x-2">
+                                <span>✓ Competition Successfully Created On-Chain!</span>
+                            </div>
+                            <div className="text-xs">
+                                Transaction Hash: <span className="font-mono">{txHash}</span>
+                            </div>
+                            <div>
+                                <a
+                                    href={`${explorerBaseUrl}/tx/${txHash}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center text-xs font-semibold text-blue-600 hover:text-blue-800 underline"
+                                >
+                                    View Transaction Receipt on Block Explorer →
+                                </a>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* SUBMIT BUTTON */}
+                    <div className="pt-4 border-t border-slate-200/80 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleCreateCompetition}
+                            disabled={isProcessing}
+                            className={`px-8 py-3.5 rounded-lg text-sm font-semibold text-white transition-all shadow-md ${isProcessing
+                                ? 'bg-blue-300 cursor-not-allowed'
+                                : 'bg-blue-600 hover:bg-blue-700 hover:shadow-lg active:scale-98'
+                                }`}
+                        >
+                            {isUploadingIpfs
+                                ? 'Uploading Files to IPFS...'
+                                : isProcessing
+                                    ? 'Processing Transaction...'
+                                    : 'Publish Competition On-Chain'}
+                        </button>
                     </div>
                 </SectionCard>
 

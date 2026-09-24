@@ -34,6 +34,8 @@ type CategoryFilter = string;
 
 interface OrganizationCompetition {
     id: string;
+    txHash?: string | null;
+    tx_hash?: string | null;
     category: string;
     status: CompetitionStatus;
     title: string;
@@ -49,7 +51,7 @@ const fallbackCompetitions: OrganizationCompetition[] = [
         status: "Submission",
         title: "Autonomous Agents Global Hackathon 2025",
         date: "Apr 20 - May 05, 2025",
-        prize: "$75,000 USDC",
+        prize: "75,000",
     },
     {
         id: "2",
@@ -57,7 +59,7 @@ const fallbackCompetitions: OrganizationCompetition[] = [
         status: "Judging",
         title: "Zero-Knowledge Financial Privacy Challenge",
         date: "Mar 15 - Apr 18, 2025",
-        prize: "$50,000 USDC",
+        prize: "50,000",
     },
     {
         id: "3",
@@ -65,7 +67,7 @@ const fallbackCompetitions: OrganizationCompetition[] = [
         status: "Registration",
         title: "NextGen DeFiUX & Account Abstraction",
         date: "Apr 01 - Jun 15, 2025",
-        prize: "$30,000 USDC",
+        prize: "30,000",
     },
     {
         id: "4",
@@ -73,7 +75,7 @@ const fallbackCompetitions: OrganizationCompetition[] = [
         status: "Completed",
         title: "Verifiable Carbon Ledger Track",
         date: "Jan 10 - Feb 28, 2025",
-        prize: "$40,000 USDC",
+        prize: "40,000",
     },
 ];
 
@@ -149,16 +151,21 @@ function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string): stri
     if (comp.prize_winners && comp.prize_winners.length > 0) {
         const total = comp.prize_winners.reduce((acc, w) => acc + (w.prize_amount || 0), 0);
         if (total > 0) {
-            return `${total.toLocaleString("en-US")} ${getTokenSymbol(null, connectedNativeSymbol)}`;
+            return total.toLocaleString("en-US");
         }
     }
-    return `50,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
+    return "50,000";
 }
 
 function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }) {
     const style = statusStyles[comp.status] || statusStyles.Submission;
     const { chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
+
+    const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
+    const rawTxHash = comp.txHash || comp.tx_hash || '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
+    const txHash = rawTxHash.startsWith('0x') ? rawTxHash : `0x${rawTxHash}`;
+    const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`;
 
     const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
         queryKey: ["competition-token-prize", comp.id],
@@ -169,9 +176,19 @@ function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }
     const prizeDisplay = useMemo(() => {
         if (isLoadingTokenPrize) return "Loading...";
         if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
-            return formatTokenPrize(tokenPrizeData.total_prize, tokenPrizeData.token_address, connectedNativeSymbol);
+            return formatTokenPrize(
+                tokenPrizeData.total_prize,
+                tokenPrizeData.token_address,
+                connectedNativeSymbol,
+                18,
+                (tokenPrizeData.token_symbol || tokenPrizeData.symbol) ?? undefined
+            );
         }
-        return comp.prize;
+        const symbol = getTokenSymbol(null, connectedNativeSymbol);
+        if (comp.prize.includes(" ")) {
+            return comp.prize;
+        }
+        return `${comp.prize} ${symbol}`;
     }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, comp.prize]);
 
     return (
@@ -198,7 +215,14 @@ function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }
                 </div>
 
                 <h3 className="text-lg font-bold text-slate-900 leading-tight">
-                    {comp.title}
+                    <a
+                        href={explorerUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="hover:underline hover:text-blue-600 transition-colors"
+                    >
+                        {comp.title}
+                    </a>
                 </h3>
 
                 <div className="flex items-center text-sm text-slate-500 mt-2">
@@ -257,6 +281,8 @@ export default function CompetitionListPage() {
         if (apiCompetitions && apiCompetitions.length > 0) {
             return apiCompetitions.map((comp) => ({
                 id: comp.id,
+                txHash: comp.tx_hash || null,
+                tx_hash: comp.tx_hash || null,
                 category: comp.category || "General",
                 status: determineStatus(comp),
                 title: comp.name || "Untitled Competition",

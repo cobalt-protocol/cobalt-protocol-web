@@ -35,8 +35,8 @@ export function CompetitionDirectory({
   referenceDate?: string
 }) {
   const { data: competitions = initialCompetitions || [] } = useQuery({
-    queryKey: ["competitions"],
-    queryFn: fetchCompetitions,
+    queryKey: ["competitions-public"],
+    queryFn: () => fetchCompetitions(null),
   })
 
   const [filters, setFilters] = useState<CompetitionFilters>(initialFilters)
