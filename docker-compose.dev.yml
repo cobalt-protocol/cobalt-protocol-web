@@ -5,28 +5,28 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: cobalt-protocol-web
+    container_name: cobalt-protocol-web-dev
     ports:
       - "${PORT:-3000}:3000"
     restart: unless-stopped
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
       - PORT=3000
 
   kubo:
     image: ipfs/kubo:latest
-    container_name: cobalt-protocol-kubo
+    container_name: cobalt_protocol_kubo_dev
     restart: unless-stopped
     ports:
       - "${KUBO_SWARM_PORT:-4001}:4001"
       # Bind API to localhost only on the host machine to allow Web UI access safely
       - "${KUBO_API_PORT:-5001}:5001"
-      - "${KUBO_GATEWAY_PORT:-8080}:8080"
+      - "${KUBO_GATEWAY_PORT:-8081}:8080"
     environment:
       IPFS_PROFILE: server
     volumes:
-      - kubo_data:/data/ipfs:U
-      - kubo_export:/export:U
+      - kubo_dev_data:/data/ipfs:U
+      - kubo_dev_export:/export:U
       - ./kubo-init.sh:/container-init.d/01-bind-api.sh:ro
     networks:
       default:
@@ -40,7 +40,7 @@ services:
       start_period: 10s
 
 volumes:
-  kubo_data:
-  kubo_export:
+  kubo_dev_data:
+  kubo_dev_export:
 
 

@@ -1,12 +1,15 @@
+version: '3.8'
+
 services:
   web:
     build:
       context: .
       dockerfile: Dockerfile.prod
-    container_name: cobalt-protocol-web
+    container_name: cobalt-protocol-web-prod
     ports:
-      - "3002:3000"
+      - "${PORT:-3002}:3000"
     restart: unless-stopped
     environment:
       - NODE_ENV=production
       - PORT=3000
+
