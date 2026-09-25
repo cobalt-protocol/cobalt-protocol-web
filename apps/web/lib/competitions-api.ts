@@ -1,5 +1,8 @@
 import { formatUnits } from "viem"
 import type { Competition, CompetitionCategory } from "@/features/competitions/types"
+import { TOKENS, getTokenSymbol, getTokenByAddress } from "./tokens"
+
+export { TOKENS, getTokenSymbol, getTokenByAddress }
 
 export interface ApiCompetitionWinner {
   id: string
@@ -150,7 +153,7 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
     participants: 0,
     teamCount: 0,
     maxTeamSize: 5,
-    currency: "USDC",
+    currency: TOKENS.USDT.symbol,
     prizes,
     timeline: [
       { id: "registration", title: "Registration Window", description: "Register team and form squad before window closes", dateLabel: fmtDate(apiComp.registration_window), status: now < new Date(apiComp.registration_window) ? "active" : "upcoming" },
@@ -502,20 +505,6 @@ export interface ApiListingTokenPrizesResponse {
   data: ApiListingTokenPrize[] | null
   message: string
   errors: null | any
-}
-
-export function getTokenSymbol(
-  tokenAddress?: string | null,
-  chainNativeSymbol?: string,
-  tokenObjSymbol?: string
-): string {
-  if (tokenObjSymbol) {
-    return tokenObjSymbol
-  }
-  if (!tokenAddress || tokenAddress === "0x0000000000000000000000000000000000000000" || tokenAddress === "0x0") {
-    return chainNativeSymbol || "BOHR"
-  }
-  return "USDC"
 }
 
 export function formatTokenPrize(

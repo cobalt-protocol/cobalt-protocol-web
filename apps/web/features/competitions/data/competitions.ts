@@ -1,4 +1,5 @@
 import type { Competition } from "../types"
+import { TOKENS } from "@/lib/tokens"
 
 export const competitionPreviewDate = "2025-04-04T00:00:00Z"
 const baseCompetition: Competition = {
@@ -22,7 +23,7 @@ const baseCompetition: Competition = {
   participants: 1240,
   teamCount: 280,
   maxTeamSize: 5,
-  currency: "USDC",
+  currency: TOKENS.USDT.symbol,
   prizes: [
     {
       id: "first",

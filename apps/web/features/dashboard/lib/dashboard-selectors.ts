@@ -1,5 +1,6 @@
 import type { Competition } from "@/features/competitions/types"
 import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors"
+import { TOKENS } from "@/lib/tokens"
 import type { PreviewMembership } from "@/features/registration/types"
 import {
   dashboardPhases,
@@ -80,7 +81,7 @@ export function mergeDashboardCompetitions(
       teamName: membership.teamName,
       memberCount,
       amountUsd: competition ? getPrizeTotal(competition) : 0,
-      currency: competition?.currency || "USDC",
+      currency: competition?.currency || TOKENS.USDT.symbol,
       poolLabel: "Contract Escrow Pool",
       actionLabel:
         membership.status === "pending" ? "View Competition" : "Open Workspace",

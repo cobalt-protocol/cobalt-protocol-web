@@ -47,7 +47,7 @@ export interface Competition {
   participants: number
   teamCount: number
   maxTeamSize: number
-  currency: "USDC"
+  currency: string
   prizes: readonly Prize[]
   timeline: readonly TimelineStage[]
   judgingCriteria: readonly JudgingCriterion[]

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronRight, Calendar as CalendarIconLucide, Clock, Loader2, CheckCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseEther, parseUnits, getAddress } from 'viem';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
@@ -14,6 +14,7 @@ import {
 } from '@workspace/ui/components/select';
 import { DateTimePicker } from '@/components/ui/date-picker';
 import { fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, type ApiListingTokenPrize } from '@/lib/competitions-api';
+import { TOKENS } from '@/lib/tokens';
 
 // --- KUMPULAN IKON SVG ---
 const InfoIcon = () => (
@@ -288,12 +289,12 @@ export default function CreateCompetition() {
     const [priceCompetitionFeeId, setPriceCompetitionFeeId] = useState('1');
     const [feeCompetitionTitle, setFeeCompetitionTitle] = useState<string>('');
     const [feeTreasuryAmount, setFeeTreasuryAmount] = useState<string>('0');
-    const [feeTokenAddress, setFeeTokenAddress] = useState<string>('0x0000000000000000000000000000000000000000');
+    const [feeTokenAddress, setFeeTokenAddress] = useState<string>(TOKENS.BOT.address);
     const [isLoadingPriceComp, setIsLoadingPriceComp] = useState<boolean>(false);
 
     const [listingTokens, setListingTokens] = useState<ApiListingTokenPrize[]>([]);
-    const [selectedTokenAddress, setSelectedTokenAddress] = useState<string>('0x0000000000000000000000000000000000000000');
-    const [tokenSymbol, setTokenSymbol] = useState<string>('USDC');
+    const [selectedTokenAddress, setSelectedTokenAddress] = useState<string>(TOKENS.BOT.address);
+    const [tokenSymbol, setTokenSymbol] = useState<string>(TOKENS.BOT.symbol);
 
     useEffect(() => {
         async function loadPriceCompetition() {
@@ -519,7 +520,7 @@ export default function CreateCompetition() {
             };
 
             const getTokenDecimals = async (tokenAddress: string): Promise<number> => {
-                if (!tokenAddress || tokenAddress === '0x0000000000000000000000000000000000000000' || tokenAddress === '0x0') {
+                if (!tokenAddress || tokenAddress === TOKENS.BOT.address || tokenAddress === '0x0') {
                     return 18;
                 }
                 if (publicClient) {
@@ -561,7 +562,7 @@ export default function CreateCompetition() {
                     id: 0n,
                     competitionId: 0n,
                     title: p.place.trim(),
-                    prizeToken: (selectedTokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`,
+                    prizeToken: (selectedTokenAddress || TOKENS.BOT.address) as `0x${string}`,
                     prizeAmount: prizeAmountBigInt,
                     certificateCID: winnerCIDs[index] || '',
                 };
@@ -659,12 +660,12 @@ export default function CreateCompetition() {
 
             const isNativePrizeToken =
                 !selectedTokenAddress ||
-                selectedTokenAddress === '0x0000000000000000000000000000000000000000' ||
+                selectedTokenAddress === TOKENS.BOT.address ||
                 selectedTokenAddress === '0x0';
 
             const isNativeFeeToken =
                 !feeToken ||
-                feeToken === '0x0000000000000000000000000000000000000000' ||
+                feeToken === TOKENS.BOT.address ||
                 feeToken === '0x0';
 
             const totalPrizeWei = _winners.reduce((acc, w) => acc + w.prizeAmount, 0n);
@@ -708,7 +709,7 @@ export default function CreateCompetition() {
 
             if (listingTokenPrizeAddress && publicClient) {
                 try {
-                    const prizeTokenAddr = getAddress(selectedTokenAddress || '0x0000000000000000000000000000000000000000') as `0x${string}`;
+                    const prizeTokenAddr = getAddress(selectedTokenAddress || TOKENS.BOT.address) as `0x${string}`;
                     const listingTokenAbi = [
                         {
                             constant: true,
