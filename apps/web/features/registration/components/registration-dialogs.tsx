@@ -10,7 +10,7 @@ interface RegistrationDialogsProps {
   profile: BuilderProfile
   onChange: (dialog: RegistrationDialog) => void
   onNavigate: (href: string) => void
-  onCreate: (input: CreateTeamInput) => string | null
+  onCreate: (input: CreateTeamInput) => Promise<string | null> | string | null
 }
 export function RegistrationDialogs({
   dialog,

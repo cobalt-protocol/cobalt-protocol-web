@@ -1,35 +1,54 @@
+import { getCompetitionById } from "@/features/competitions/data/competition-repository"
+import { CompetitionWorkspace } from "@/features/workspace/components/competition-workspace"
 import {
-  getCompetitionBySlug,
-  getCompetitions,
-} from "@/features/competitions/data/competition-repository"
-import { CompetitionDetail } from "@/features/competitions/components/competition-detail"
+  fetchTeamCompetitionDetail,
+  mapApiCompetitionToCompetition,
+} from "@/lib/competitions-api"
 import type { Metadata } from "next"
-import { notFound } from "next/navigation"
+
+export const dynamic = "force-dynamic"
+export const dynamicParams = true
 
 interface PageProps {
   params: Promise<{ slug: string }>
-}
-
-export async function generateStaticParams() {
-  const competitions = await getCompetitions()
-  return competitions.map(({ slug }) => ({ slug }))
 }
 
 export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params
-  const competition = await getCompetitionBySlug(slug)
+  const competition = await getCompetitionById(slug)
+
+  if (!competition) {
+    return {
+      title: "Workspace | Cobalt Protocol",
+    }
+  }
+
   return {
-    title: competition
-      ? `My Competition · ${competition.title} | Cobalt Protocol`
-      : "Competition not found",
+    title: `My Competition · ${competition.title} | Cobalt Protocol`,
   }
 }
 
 export default async function MyCompetitionPage({ params }: PageProps) {
   const { slug } = await params
-  const competition = await getCompetitionBySlug(slug)
-  if (!competition) notFound()
-  return <CompetitionDetail competition={competition} slug={slug} />
+  let competition = await getCompetitionById(slug)
+  let teamId: string | undefined = slug
+
+  if (!competition) {
+    const teamComp = await fetchTeamCompetitionDetail(slug)
+    if (teamComp?.competition) {
+      teamId = teamComp.team.id
+      competition = mapApiCompetitionToCompetition(teamComp.competition)
+    }
+  }
+
+  return (
+    <CompetitionWorkspace
+      key={teamId || slug}
+      competition={competition}
+      teamId={teamId || slug}
+    />
+  )
 }
+

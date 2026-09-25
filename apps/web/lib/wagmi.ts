@@ -23,17 +23,23 @@ if (typeof window !== "undefined") {
     }
   } catch (_) {}
 
-  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout)
+  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout, MetaMask session restore)
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason
     const message = reason?.message || String(reason || "")
+    const stack = reason?.stack || ""
+    const fullStr = `${message} ${stack} ${String(reason)}`
     if (
-      message.includes("Aave Account") ||
-      message.includes("AaveAccountSdk") ||
-      message.includes("EIP1193 provider connection timeout") ||
-      message.includes("Failed to establish lazy connection")
+      fullStr.includes("Aave") ||
+      fullStr.includes("AaveAccount") ||
+      fullStr.includes("EIP1193") ||
+      fullStr.includes("lazy connection") ||
+      fullStr.includes("MetaMask") ||
+      fullStr.includes("restoring session") ||
+      fullStr.includes("chrome-extension://") ||
+      fullStr.includes("moz-extension://")
     ) {
-      console.warn("Prevented unhandled browser extension rejection:", message)
+      console.warn("Prevented unhandled browser extension rejection:", message || reason)
       event.preventDefault()
     }
   })

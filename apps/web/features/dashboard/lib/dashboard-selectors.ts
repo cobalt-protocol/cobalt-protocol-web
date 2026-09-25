@@ -31,29 +31,66 @@ export function mergeDashboardCompetitions(
   const entries = fixtures.map((entry) => ({ ...entry }))
   for (const membership of memberships) {
     const competition = competitions.find(
-      (item) => item.slug === membership.competitionSlug
+      (item) =>
+        item.slug === membership.competitionSlug ||
+        item.id === membership.competitionId
     )
-    if (!competition) continue
-    const index = entries.findIndex(
-      (item) => item.competitionSlug === membership.competitionSlug
-    )
+    const rawComp = membership.rawTeam?.competition
+
+    if (!competition && !rawComp) continue
+
+    const title =
+      competition?.title || rawComp?.name || membership.teamName || "Untitled Competition"
+    const category = competition?.tag || rawComp?.category || "Hackathon"
+    const competitionSlug =
+      competition?.slug || rawComp?.slug || membership.competitionSlug
+    const txHash = competition?.txHash || rawComp?.tx_hash || null
+
+    let phase: DashboardPhase = "registration"
+    if (rawComp) {
+      const now = new Date()
+      const compWin = rawComp.competition_window ? new Date(rawComp.competition_window) : null
+      const subDead = rawComp.submission_deadline ? new Date(rawComp.submission_deadline) : null
+      const judgRev = rawComp.judging_review ? new Date(rawComp.judging_review) : null
+      const resAnn = rawComp.result_announcement ? new Date(rawComp.result_announcement) : null
+      const claimDate = rawComp.pirze_certificate_claim ? new Date(rawComp.pirze_certificate_claim) : null
+
+      if (compWin && now < compWin) phase = "registration"
+      else if (subDead && now < subDead) phase = "submission"
+      else if (judgRev && now < judgRev) phase = "judging"
+      else if (resAnn && now < resAnn) phase = "announcement"
+      else if (claimDate && now < claimDate) phase = "claim"
+      else if (claimDate && now >= claimDate) phase = "closed"
+    } else if (competition) {
+      if (competition.status === "completed") phase = "closed"
+    }
+
+    const memberCount =
+      membership.rawTeam?.team_roles?.length ?? (membership.role === "lead" ? 1 : null)
+
     const local: DashboardCompetition = {
-      id: `local-${membership.competitionSlug}`,
-      competitionSlug: membership.competitionSlug,
-      title: competition.title,
-      category: competition.tag,
-      phase: "registration",
-      organizer: competition.organizer,
+      id: membership.teamId || `local-${membership.competitionSlug}`,
+      txHash,
+      tx_hash: txHash,
+      competitionSlug,
+      title,
+      category,
+      phase,
+      organizer: competition?.organizer || "Cobalt Protocol",
       teamName: membership.teamName,
-      memberCount: membership.role === "lead" ? 1 : null,
-      amountUsd: getPrizeTotal(competition),
-      currency: competition.currency,
+      memberCount,
+      amountUsd: competition ? getPrizeTotal(competition) : 0,
+      currency: competition?.currency || "USDC",
       poolLabel: "Contract Escrow Pool",
       actionLabel:
         membership.status === "pending" ? "View Competition" : "Open Workspace",
       source: "local",
       pending: membership.status === "pending",
     }
+
+    const index = entries.findIndex(
+      (item) => item.competitionSlug === competitionSlug || item.id === local.id
+    )
     if (index >= 0) entries[index] = local
     else entries.push(local)
   }

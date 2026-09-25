@@ -1,13 +1,10 @@
 "use client"
 import { Breadcrumbs, PageContainer } from "@/components/ui/page-primitives"
-import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
 import { useEffect, useState } from "react"
 import {
   emptyProfile,
-  isBuilderProfile,
   mockProfile,
-  profileStorageKey,
 } from "../data/profile"
 import { ProfileEditor } from "./profile-editor"
 import { useSiteActions } from "@/components/layout/site-actions"
@@ -30,33 +27,26 @@ export function ProfilePage({
   startEditing?: boolean
 }) {
   const { sessionToken, user, register } = useSiteActions()
-  const { value, save, ready } = useBrowserDraft(
-    profileStorageKey,
-    mockProfile,
-    isBuilderProfile
-  )
 
-  const [activeProfile, setActiveProfile] = useState<BuilderProfile>(() => {
-    if (sessionToken && user) {
-      return mapApiProfileToBuilderProfile(user)
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        window.localStorage.removeItem("cobalt:profile:v1")
+      } catch {}
     }
-    return sessionToken ? emptyProfile : (value || mockProfile)
-  })
+  }, [])
+
+  const [activeProfile, setActiveProfile] = useState<BuilderProfile>(mockProfile)
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [isFetchingRemote, setIsFetchingRemote] = useState<boolean>(false)
-
-  // Sync activeProfile with local browser draft only when NOT authenticated
-  useEffect(() => {
-    if (!sessionToken && ready && value) {
-      setActiveProfile(value)
-    }
-  }, [sessionToken, ready, value])
 
   // Sync initial user from site actions context if available
   useEffect(() => {
     if (sessionToken && user) {
       const mapped = mapApiProfileToBuilderProfile(user)
       setActiveProfile(mapped)
+    } else if (sessionToken && !user) {
+      setActiveProfile(emptyProfile)
     }
   }, [sessionToken, user])
 
@@ -73,14 +63,12 @@ export function ProfilePage({
         if (res?.data?.user) {
           const remoteProfile = mapApiProfileToBuilderProfile(res.data.user)
           setActiveProfile(remoteProfile)
-          save(remoteProfile)
         } else {
           return getMyProfile(sessionToken).then((pRes) => {
             if (!isMounted) return
             if (pRes?.data) {
               const remoteProfile = mapApiProfileToBuilderProfile(pRes.data)
               setActiveProfile(remoteProfile)
-              save(remoteProfile)
             }
           })
         }
@@ -93,7 +81,6 @@ export function ProfilePage({
             if (pRes?.data) {
               const remoteProfile = mapApiProfileToBuilderProfile(pRes.data)
               setActiveProfile(remoteProfile)
-              save(remoteProfile)
             }
           })
           .catch((pErr) => {
@@ -139,7 +126,6 @@ export function ProfilePage({
         }
 
         setActiveProfile(updatedProfile)
-        save(updatedProfile)
         setSavedMessage("Profile updated successfully on Cobalt Protocol server.")
 
         if (resumeCompetition && isProfileComplete(updatedProfile)) {
@@ -149,15 +135,12 @@ export function ProfilePage({
       }
       return false
     } else {
-      const success = save(next)
-      if (success) {
-        setActiveProfile(next)
-        setSavedMessage("Profile saved in browser storage. Connect wallet to sync with Cobalt API.")
-        if (resumeCompetition && isProfileComplete(next)) {
-          register(resumeCompetition, next)
-        }
+      setActiveProfile(next)
+      setSavedMessage("Profile preview updated. Connect wallet to sync with Cobalt API.")
+      if (resumeCompetition && isProfileComplete(next)) {
+        register(resumeCompetition, next)
       }
-      return success
+      return true
     }
   }
 
@@ -185,7 +168,7 @@ export function ProfilePage({
           <span className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
           <span>Loading profile from server…</span>
         </div>
-      ) : ready || sessionToken ? (
+      ) : (
         <ProfileEditor
           key={
             sessionToken
@@ -195,8 +178,6 @@ export function ProfilePage({
           initialProfile={activeProfile}
           onSave={handleSave}
         />
-      ) : (
-        <p role="status">Loading profile…</p>
       )}
     </PageContainer>
   )

@@ -133,7 +133,7 @@ export function ProfileEditor({
         <Panel className="flex min-h-52 items-center justify-center bg-gradient-to-br from-blue-700 to-slate-950 text-white">
           <div className="text-center">
             <UserRound size={70} className="mx-auto opacity-70" />
-            <p className="mt-4 text-sm font-semibold">@{profile.username}</p>
+            <p className="mt-4 text-sm font-semibold" suppressHydrationWarning>@{profile.username}</p>
             <p className="mt-1 text-[10px] text-blue-200">Builder profile</p>
           </div>
         </Panel>

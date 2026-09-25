@@ -9,6 +9,8 @@ import { useRouter } from "next/navigation"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
 import { generateNonce, verifySignature, getMe, type User, type UserRole } from "@/lib/auth-api"
+import { mapApiProfileToBuilderProfile } from "@/lib/profile-api"
+import { createCompetitionTeam, fetchMyTeams, type ApiTeam } from "@/lib/competitions-api"
 import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly, signMessageWithViem } from "@/lib/wagmi"
 import {
   isBuilderProfile,
@@ -34,6 +36,7 @@ const isBoolean = (value: unknown): value is boolean =>
 const isOptionalProfile = (value: unknown): value is BuilderProfile | null =>
   value === null || isBuilderProfile(value)
 interface SiteActions {
+  profile: BuilderProfile
   joinTeam: (membership: PreviewMembership) => string | null
   openWallet: () => void
   showNotice: (message: string) => void
@@ -79,19 +82,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const { setOpen: setConnectKitOpen } = useModal()
   const { signMessageAsync, isPending: isSigningWagmi } = useSignMessage()
 
-  const { value: storedConnected, save: saveConnected } = useBrowserDraft(
-    "cobalt:wallet-preview:v1",
-    false,
-    isBoolean
-  )
   const [sessionConnected, setSessionConnected] = useState<boolean | null>(null)
   const [directAddress, setDirectAddress] = useState<string | null>(null)
-  const [userDisconnected, setUserDisconnected] = useState<boolean>(() => {
-    if (typeof window !== "undefined") {
-      return window.localStorage.getItem("cobalt:disconnected") === "true"
-    }
-    return false
-  })
+  const [userDisconnected, setUserDisconnected] = useState<boolean>(false)
 
   const [sessionToken, setSessionToken] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
@@ -99,29 +92,28 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     }
     return null
   })
-  const [authenticatedAddress, setAuthenticatedAddress] = useState<string | null>(() => {
+  const [authenticatedAddress, setAuthenticatedAddress] = useState<string | null>(null)
+  const [userRole, setUserRole] = useState<UserRole | null>(null)
+  const [user, setUser] = useState<User | null>(null)
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      return window.localStorage.getItem("cobalt:authenticated_address")
-    }
-    return null
-  })
-  const [userRole, setUserRole] = useState<UserRole | null>(() => {
-    if (typeof window !== "undefined") {
-      return (window.localStorage.getItem("cobalt:user_role") as UserRole) || null
-    }
-    return null
-  })
-  const [user, setUser] = useState<User | null>(() => {
-    if (typeof window !== "undefined") {
-      const stored = window.localStorage.getItem("cobalt:user")
-      if (stored) {
+      const keysToRemove = [
+        "cobalt:disconnected",
+        "cobalt:authenticated_address",
+        "cobalt:user_role",
+        "cobalt:user",
+        "cobalt:wallet-preview:v1",
+        "cobalt:profile:v1",
+        "cobalt:memberships:v1",
+      ]
+      for (const k of keysToRemove) {
         try {
-          return JSON.parse(stored)
+          window.localStorage.removeItem(k)
         } catch {}
       }
     }
-    return null
-  })
+  }, [])
 
   const effectiveAddress = !userDisconnected ? (address ? String(address) : directAddress ?? undefined) : undefined
   const isAddressConnected = Boolean(!userDisconnected && (isWagmiConnected || Boolean(directAddress)))
@@ -140,26 +132,26 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
   const isAuthInProgressRef = useRef(false)
 
   useEffect(() => {
-    if (sessionToken && connected && !userRole) {
-      getMe(sessionToken)
-        .then((res) => {
-          if (res.data?.user) {
-            const u = res.data.user
-            setUser(u)
-            if (u.role) {
-              setUserRole(u.role)
-              if (typeof window !== "undefined") {
-                window.localStorage.setItem("cobalt:user_role", u.role)
-                window.localStorage.setItem("cobalt:user", JSON.stringify(u))
-              }
-            }
-          }
-        })
-        .catch((err) => {
-          console.warn("Could not fetch user profile:", err)
-        })
+    if (!sessionToken) {
+      setUser(null)
+      setUserRole(null)
+      setAuthenticatedAddress(null)
+      return
     }
-  }, [sessionToken, connected, userRole])
+
+    getMe(sessionToken)
+      .then((res) => {
+        if (res.data?.user) {
+          const u = res.data.user
+          setUser(u)
+          if (u.role) setUserRole(u.role)
+          if (u.wallet_address) setAuthenticatedAddress(u.wallet_address)
+        }
+      })
+      .catch((err) => {
+        console.warn("Could not fetch user profile from API:", err)
+      })
+  }, [sessionToken])
 
   // Wallet Connection Auth Flow:
   // Connect Wallet -> Generate Nonce (API) -> Sign Message with Viem -> Verify Signature (API) -> Connection Complete
@@ -233,9 +225,6 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           const role = userObj?.role || "user"
           if (typeof window !== "undefined") {
             window.localStorage.setItem("cobalt:access_token", token)
-            window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress!)
-            window.localStorage.setItem("cobalt:user_role", role)
-            window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
           }
           setSessionToken(token)
           setAuthenticatedAddress(effectiveAddress!)
@@ -260,11 +249,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
         // Abort wallet connection on failure so it doesn't state as connected
         if (typeof window !== "undefined") {
-          window.localStorage.setItem("cobalt:disconnected", "true")
           window.localStorage.removeItem("cobalt:access_token")
-          window.localStorage.removeItem("cobalt:authenticated_address")
-          window.localStorage.removeItem("cobalt:user_role")
-          window.localStorage.removeItem("cobalt:user")
         }
         setSessionToken(null)
         setAuthenticatedAddress(null)
@@ -334,17 +319,12 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     checkAccounts()
 
     const handleAccountsChanged = (accs: string[]) => {
-      if (window.localStorage.getItem("cobalt:disconnected") === "true") {
-        return
-      }
       if (accs && accs.length > 0 && accs[0]) {
         setDirectAddress(accs[0])
         setSessionConnected(true)
-        saveConnected(true)
       } else {
         setDirectAddress(null)
         setSessionConnected(false)
-        saveConnected(false)
       }
     }
 
@@ -352,13 +332,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     return () => {
       provider.removeListener?.("accountsChanged", handleAccountsChanged)
     }
-  }, [saveConnected])
-  const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
-    profileStorageKey,
-    null,
-    isOptionalProfile
-  )
-  const profile = savedProfile ?? mockProfile
+  }, [])
+
+  const profile = user ? mapApiProfileToBuilderProfile(user) : mockProfile
   const { memberships, addMembership } = useMemberships()
   const [dialog, setDialog] = useState<RegistrationDialog>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -399,11 +375,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
   async function handleDisconnectWallet() {
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("cobalt:disconnected", "true")
       window.localStorage.removeItem("cobalt:access_token")
-      window.localStorage.removeItem("cobalt:authenticated_address")
-      window.localStorage.removeItem("cobalt:user_role")
-      window.localStorage.removeItem("cobalt:user")
     }
     setSessionToken(null)
     setAuthenticatedAddress(null)
@@ -426,7 +398,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       }
     }
     setDirectAddress(null)
-    setSessionConnected(saveConnected(false) ? null : false)
+    setSessionConnected(false)
     setDialog(null)
     setNotice(null)
 
@@ -452,7 +424,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     continueRegistration(
       competition,
       connected,
-      profileOverride ?? savedProfile
+      profileOverride ?? profile
     )
   }
   function continueRegistration(
@@ -461,8 +433,12 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     currentProfile: BuilderProfile | null
   ) {
     const membership = memberships.find(
-      (item) => item.competitionSlug === competition.slug
+      (item) =>
+        item.competitionSlug === competition.slug ||
+        (competition.id && item.competitionSlug === competition.id) ||
+        (competition.id && item.competitionId === competition.id)
     )
+
     const step = getRegistrationStep(
       walletConnected,
       currentProfile,
@@ -475,46 +451,97 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     if (step === "workspace" || step === "dashboard") {
       navigate(
         step === "workspace"
-          ? routes.workspace(competition.slug)
+          ? routes.workspace(competition.id || competition.slug)
           : routes.dashboard
       )
     } else setDialog({ kind: step, competition })
   }
-  function joinTeam(membership: PreviewMembership): string | null {
-    if (!connected || !isProfileComplete(savedProfile))
+  function joinTeam(
+    membership: PreviewMembership,
+    redirectTo?: string
+  ): string | null {
+    if (!connected || !isProfileComplete(profile))
       return "Connect your wallet and complete your profile first."
     if (!addMembership(membership))
       return "Could not save this team. You may already have a team here, or browser storage is unavailable."
     navigate(
-      membership.status === "active"
-        ? routes.workspace(membership.competitionSlug)
-        : routes.dashboard
+      redirectTo ??
+        (membership.status === "active"
+          ? routes.workspace(membership.competitionId || membership.competitionSlug)
+          : routes.dashboard)
     )
     return null
   }
-  function createTeam(input: CreateTeamInput): string | null {
+  async function createTeam(input: CreateTeamInput): Promise<string | null> {
     const error = validateCreateTeam(input)
     if (error) return error
     if (dialog?.kind !== "create") return "Reopen the team form to continue."
-    const id = crypto.randomUUID()
-    return joinTeam({
-      competitionSlug: dialog.competition.slug,
-      teamId: id,
-      teamName: input.name.trim(),
-      visibility: input.visibility,
-      requirements: input.requirements.trim(),
-      ownerUsername: profile.username,
-      role: "lead",
-      status: "active",
-      inviteCode:
-        input.visibility === "private"
-          ? `COBALT-${id.slice(0, 8).toUpperCase()}`
-          : null,
-    })
+
+    const compIdOrSlug = dialog.competition.id || dialog.competition.slug
+
+    const parsedSkills = input.requirements
+      ? input.requirements
+          .split(/[,;\n]/)
+          .map((s) => s.trim())
+          .filter(Boolean)
+      : []
+    const skillsList = Array.from(
+      new Set([...(input.skills || []), ...parsedSkills])
+    )
+
+    let teamId = crypto.randomUUID()
+    let inviteCode: string | null =
+      input.visibility === "private"
+        ? `COBALT-${teamId.slice(0, 8).toUpperCase()}`
+        : null
+
+    try {
+      const res = await createCompetitionTeam(
+        compIdOrSlug,
+        {
+          name: input.name.trim(),
+          visibility: input.visibility === "public",
+          description: input.requirements.trim(),
+          skills: skillsList,
+        },
+        sessionToken
+      )
+
+      if (res?.data) {
+        teamId = res.data.id || teamId
+        if (res.data.team_code) {
+          inviteCode = res.data.team_code
+        } else if (Array.isArray(res.data.team_codes) && res.data.team_codes[0]?.code) {
+          inviteCode = res.data.team_codes[0].code
+        }
+      }
+    } catch (apiErr: any) {
+      console.warn("Backend API create team notice/error:", apiErr?.message)
+      if (sessionToken) {
+        return apiErr?.message || "Failed to create team on server."
+      }
+    }
+
+    return joinTeam(
+      {
+        competitionId: dialog.competition.id,
+        competitionSlug: dialog.competition.slug,
+        teamId,
+        teamName: input.name.trim(),
+        visibility: input.visibility,
+        requirements: input.requirements.trim(),
+        ownerUsername: profile.username,
+        role: "lead",
+        status: "active",
+        inviteCode,
+      },
+      routes.dashboard
+    )
   }
   return (
     <SiteActionsContext.Provider
       value={{
+        profile,
         openWallet: handleOpenWallet,
         showNotice: setNotice,
         connected,
@@ -584,9 +611,6 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
                 const role = userObj?.role || "user"
                 if (typeof window !== "undefined") {
                   window.localStorage.setItem("cobalt:access_token", token)
-                  window.localStorage.setItem("cobalt:authenticated_address", effectiveAddress)
-                  window.localStorage.setItem("cobalt:user_role", role)
-                  window.localStorage.setItem("cobalt:user", JSON.stringify(userObj))
                 }
                 setSessionToken(token)
                 setAuthenticatedAddress(effectiveAddress)

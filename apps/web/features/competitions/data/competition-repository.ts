@@ -1,5 +1,10 @@
 import type { Competition } from "../types"
-import { fetchCompetitions, fetchCompetitionById } from "@/lib/competitions-api"
+import {
+  fetchCompetitions,
+  fetchCompetitionById,
+  fetchTeamCompetitionDetail,
+  mapApiCompetitionToCompetition,
+} from "@/lib/competitions-api"
 
 export async function getCompetitions(): Promise<readonly Competition[]> {
   return fetchCompetitions()
@@ -14,20 +19,22 @@ export async function getCompetitionById(
     return directComp
   }
 
-  // 2. Fallback: Search in overall competitions list (by ID or slug)
+  // 2. Direct fetch competition by Team ID from GET /api/v1/teams/:teamId/competition
+  const teamComp = await fetchTeamCompetitionDetail(id)
+  if (teamComp?.competition) {
+    return mapApiCompetitionToCompetition(teamComp.competition)
+  }
+
+  // 3. Fallback: Search in overall competitions list (by ID or slug)
   const competitions = await getCompetitions()
   const exactMatch = competitions.find(
     (competition) => competition.id === id || competition.slug === id
   )
   if (exactMatch) return exactMatch
 
-  // 3. Fallback prefix/fuzzy match for slug variations
+  // 4. Fallback exact case-insensitive match
   const idLower = id.toLowerCase()
-  return competitions.find(
-    (c) =>
-      c.slug.toLowerCase().startsWith(idLower) ||
-      idLower.startsWith(c.slug.toLowerCase())
-  )
+  return competitions.find((c) => c.slug.toLowerCase() === idLower)
 }
 
 export async function getCompetitionBySlug(

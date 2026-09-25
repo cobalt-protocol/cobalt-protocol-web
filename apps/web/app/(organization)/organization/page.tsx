@@ -19,7 +19,7 @@ import {
     SelectValue,
 } from "@workspace/ui/components/select";
 import { Plus, Search, Calendar, ArrowRight, Loader2 } from "lucide-react";
-import { fetchApiCompetitions, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol, getStoredToken, type ApiCompetition } from "@/lib/competitions-api";
+import { fetchApiCompetitions, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol, getStoredToken, parse18DecimalAmount, type ApiCompetition } from "@/lib/competitions-api";
 import { useAccount } from "wagmi";
 
 // --- Tipe ---
@@ -149,7 +149,10 @@ function determineStatus(comp: ApiCompetition): CompetitionStatus {
 
 function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string): string {
     if (comp.prize_winners && comp.prize_winners.length > 0) {
-        const total = comp.prize_winners.reduce((acc, w) => acc + (w.prize_amount || 0), 0);
+        const total = comp.prize_winners.reduce((acc, w) => {
+          const val = w.prize_amount ?? w.amount ?? 0
+          return acc + parse18DecimalAmount(val, 18)
+        }, 0);
         if (total > 0) {
             return total.toLocaleString("en-US");
         }

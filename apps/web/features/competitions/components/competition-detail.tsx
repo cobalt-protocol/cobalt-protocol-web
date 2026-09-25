@@ -72,8 +72,12 @@ export function CompetitionDetail({
     enabled: Boolean(competitionId && !initialCompetition),
   });
 
-  const effectiveCompetition: Competition | undefined =
-    initialCompetition || fetchedUserCompetition || (apiCompetition ? mapApiCompetitionToCompetition(apiCompetition) : undefined);
+  const effectiveCompetition: Competition | undefined = useMemo(() => {
+    if (apiCompetition) {
+      return mapApiCompetitionToCompetition(apiCompetition);
+    }
+    return initialCompetition || fetchedUserCompetition;
+  }, [apiCompetition, initialCompetition, fetchedUserCompetition]);
 
   const isOwner = Boolean(
     apiCompetition?.user_id &&
@@ -98,7 +102,13 @@ export function CompetitionDetail({
   const prizePoolDisplay = useMemo(() => {
     if (isLoadingTokenPrize) return "Loading...";
     if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
-      return formatTokenPrize(tokenPrizeData.total_prize, tokenPrizeData.token_address, connectedNativeSymbol);
+      return formatTokenPrize(
+        tokenPrizeData.total_prize,
+        tokenPrizeData.token_address,
+        connectedNativeSymbol,
+        18,
+        (tokenPrizeData.token_symbol || tokenPrizeData.symbol) ?? undefined
+      );
     }
     if (effectiveCompetition) {
       return formatMoney(getPrizeTotal(effectiveCompetition));

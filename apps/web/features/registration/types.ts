@@ -1,4 +1,5 @@
 import type { Competition } from "@/features/competitions/types"
+import type { ApiTeam } from "@/lib/competitions-api"
 export type RegistrationCompetition = Pick<
   Competition,
   "id" | "slug" | "title" | "maxTeamSize"
@@ -9,6 +10,7 @@ export type RegistrationDialog =
   | { kind: "choice" | "create"; competition: RegistrationCompetition }
   | null
 export interface PreviewMembership {
+  competitionId?: string
   competitionSlug: string
   teamId: string
   teamName: string
@@ -18,9 +20,11 @@ export interface PreviewMembership {
   role: "lead" | "member"
   status: "active" | "pending"
   inviteCode: string | null
+  rawTeam?: ApiTeam
 }
 export interface CreateTeamInput {
   name: string
   visibility: "public" | "private"
   requirements: string
+  skills?: string[]
 }

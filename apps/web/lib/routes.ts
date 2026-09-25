@@ -8,5 +8,5 @@ export const routes = {
   competition: (id: string) => `/competitions/${encodeURIComponent(id)}`,
   joinTeam: (slug: string) =>
     `/competitions/${encodeURIComponent(slug)}/join-team`,
-  workspace: (slug: string) => `/my-competitions/${encodeURIComponent(slug)}`,
+  workspace: (id: string) => `/my-competitions/${encodeURIComponent(id)}`,
 } as const

@@ -4,13 +4,8 @@ import { primaryLinkClass } from "@/components/ui/page-primitives"
 import type { Competition } from "@/features/competitions/types"
 import { fetchCompetitions } from "@/lib/competitions-api"
 import { useQuery } from "@tanstack/react-query"
-import {
-  isBuilderProfile,
-  profileStorageKey,
-} from "@/features/profile/data/profile"
-import type { BuilderProfile } from "@/features/profile/types"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
-import { useBrowserDraft } from "@/lib/browser-draft"
+import { useSiteActions } from "@/components/layout/site-actions"
 import { formatMoney } from "@/lib/format"
 import { routes } from "@/lib/routes"
 import { Button } from "@workspace/ui/components/button"
@@ -19,7 +14,6 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 import {
-  dashboardCompetitions,
   dashboardProfile,
 } from "../data/dashboard-fixtures"
 import {
@@ -37,9 +31,6 @@ import {
 import { DashboardProfileCard } from "./dashboard-profile-card"
 import { JoinedCompetitionRow } from "./joined-competition-row"
 
-const isOptionalProfile = (value: unknown): value is BuilderProfile | null =>
-  value === null || isBuilderProfile(value)
-
 export function ParticipantDashboard({
   competitions: initialCompetitions,
 }: {
@@ -51,35 +42,28 @@ export function ParticipantDashboard({
   })
   const router = useRouter()
   const { memberships } = useMemberships()
-  const { value: savedProfile } = useBrowserDraft<BuilderProfile | null>(
-    profileStorageKey,
-    null,
-    isOptionalProfile
-  )
+  const { profile: siteProfile } = useSiteActions()
   const [phase, setPhase] = useState<DashboardFilter>("all")
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<DashboardCompetition | null>(null)
   const entries = mergeDashboardCompetitions(
-    dashboardCompetitions,
+    [],
     memberships,
     competitions
   )
   const counts = getDashboardCounts(entries)
   const stats = getDashboardStats(entries)
   const visible = filterDashboardCompetitions(entries, phase, query)
-  const profile = savedProfile
+  const profile = siteProfile
     ? {
         ...dashboardProfile,
-        name:
-          savedProfile.username === dashboardProfile.username
-            ? dashboardProfile.name
-            : savedProfile.username,
-        username: savedProfile.username,
-        institution: savedProfile.institution,
-        pitch: savedProfile.pitch,
-        skills: savedProfile.skills
+        name: siteProfile.username || dashboardProfile.name,
+        username: siteProfile.username || dashboardProfile.username,
+        institution: siteProfile.institution || dashboardProfile.institution,
+        pitch: siteProfile.pitch || dashboardProfile.pitch,
+        skills: siteProfile.skills
           .slice(0, 3)
-          .map((skill) => `${skill.name} [${skill.level}]`),
+          .map((skill: { name: string; level?: string }) => `${skill.name} [${skill.level || "Intermediate"}]`),
       }
     : dashboardProfile
   function handleAction(entry: DashboardCompetition) {
@@ -87,7 +71,7 @@ export function ParticipantDashboard({
       router.push(
         entry.pending
           ? routes.competition(entry.competitionSlug)
-          : routes.workspace(entry.competitionSlug)
+          : routes.workspace(entry.id || entry.competitionSlug)
       )
       return
     }
@@ -230,7 +214,7 @@ export function ParticipantDashboard({
               {selected.phase === "submission" && selected.competitionSlug && (
                 <Link
                   className={primaryLinkClass}
-                  href={routes.workspace(selected.competitionSlug)}
+                  href={routes.workspace(selected.id || selected.competitionSlug)}
                   onClick={() => setSelected(null)}
                 >
                   Open Workspace

@@ -6,14 +6,21 @@ export interface ApiCompetitionWinner {
   competition_id: string
   team_id?: string | null
   user_id?: string | null
-  prize_amount?: number | null
+  winner_id?: string | null
+  category?: string | null
+  amount?: number | string | null
+  prize_amount?: number | string | null
+  percentage?: number | string | null
   place?: number | null
+  rank?: number | null
   tx_hash?: string | null
-  created_at: string
+  certificate_cid?: string | null
+  created_at?: string
 }
 
 export interface ApiCompetition {
   id: string
+  slug?: string | null
   tx_hash?: string | null
   name: string
   category: string
@@ -42,6 +49,31 @@ const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
+
+export function parse18DecimalAmount(val?: string | number | null, decimals: number = 18): number {
+  if (val === undefined || val === null || val === "") return 0
+  const strVal = val.toString().trim()
+  try {
+    const bigVal = BigInt(strVal)
+    if (bigVal >= 1_000_000_000n) {
+      const formatted = formatUnits(bigVal, decimals)
+      const parsed = parseFloat(formatted)
+      return isNaN(parsed) ? 0 : parsed
+    } else {
+      const parsed = Number(strVal)
+      return isNaN(parsed) ? 0 : parsed
+    }
+  } catch {
+    const parsed = parseFloat(strVal)
+    return isNaN(parsed) ? 0 : parsed
+  }
+}
+
+function getOrdinalSuffix(n: number): string {
+  const s = ["th", "st", "nd", "rd"]
+  const v = n % 100
+  return s[(v - 20) % 10] || s[v] || s[0] || "th"
+}
 
 export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competition {
   let category: CompetitionCategory = "Hackathon"
@@ -76,12 +108,18 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
     : null
 
   const prizes = apiComp.prize_winners && apiComp.prize_winners.length > 0
-    ? apiComp.prize_winners.map((w, i) => ({
-        id: w.id || `prize-${i}`,
-        title: `${w.place || i + 1}${i === 0 ? "st" : i === 1 ? "nd" : i === 2 ? "rd" : "th"} Place`,
-        amount: w.prize_amount || 5000,
-        description: w.tx_hash ? `Reward (${w.tx_hash.slice(0, 10)}...)` : "Prize reward",
-      }))
+    ? apiComp.prize_winners.map((w, i) => {
+        const placeNum = w.rank || w.place || (i + 1)
+        const rawAmount = w.prize_amount ?? w.amount ?? 0
+        const amountNum = parse18DecimalAmount(rawAmount, 18)
+        const titleStr = w.category || `${placeNum}${getOrdinalSuffix(placeNum)} Place`
+        return {
+          id: w.id || `prize-${i}`,
+          title: titleStr,
+          amount: amountNum,
+          description: w.tx_hash ? `Reward (${w.tx_hash.slice(0, 10)}...)` : "Prize reward",
+        }
+      })
     : [
         { id: `${apiComp.id}-1st`, title: "1st Place Champion", amount: 25000, description: "Top prize pool" },
         { id: `${apiComp.id}-2nd`, title: "2nd Place Finalist", amount: 15000, description: "Runner up reward" },
@@ -133,6 +171,199 @@ export function mapApiCompetitionToCompetition(apiComp: ApiCompetition): Competi
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null
   return window.localStorage.getItem("cobalt:access_token")
+}
+
+export interface CreateTeamPayload {
+  name?: string
+  visibility: boolean
+  description: string
+  skills?: string[]
+}
+
+export async function createCompetitionTeam(
+  competitionIdOrSlug: string,
+  payload: CreateTeamPayload,
+  token?: string | null
+): Promise<{ data: any; message: string }> {
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    throw new Error("You must be authenticated to create a team.")
+  }
+
+  const response = await fetch(`${API_BASE_URL}/competitions/${encodeURIComponent(competitionIdOrSlug)}/teams`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+    },
+    body: JSON.stringify(payload),
+  })
+
+  const resJson = await response.json()
+  if (!response.ok) {
+    throw new Error(resJson.message || resJson.error || "Failed to create team")
+  }
+
+  return resJson
+}
+
+export interface ApiTeamRole {
+  id: string
+  team_id: string
+  user_id: string
+  role: string
+  created_at?: string
+}
+
+export interface ApiTeamCode {
+  id: string
+  code: string
+  team_id: string
+  created_at?: string
+}
+
+export interface ApiTeamSkill {
+  id: string
+  name: string
+  team_id: string
+  created_at?: string
+}
+
+export interface ApiTeam {
+  id: string
+  name: string
+  visibility: boolean
+  description?: string | null
+  competition_id: string
+  user_id: string
+  skills_suggestions?: ApiTeamSkill[]
+  team_codes?: ApiTeamCode[]
+  team_roles?: ApiTeamRole[]
+  competition?: ApiCompetition
+  created_at: string
+  updated_at?: string | null
+}
+
+export async function fetchTeamDetail(
+  teamId: string,
+  token?: string | null
+): Promise<any> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const authToken = typeof token === "string" ? token : (token === null || token === false ? null : getStoredToken())
+    if (authToken) {
+      headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
+    }
+
+    const compRes = await fetch(`${API_BASE_URL}/teams/${encodeURIComponent(teamId)}/competition`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (compRes.ok) {
+      const compJson = await compRes.json()
+      if (compJson?.data) {
+        const d = compJson.data
+        return {
+          ...(d.team || {}),
+          competition: d.competition,
+          team_roles: d.team_roles || [],
+          team_codes: d.team_codes || [],
+        }
+      }
+    }
+
+    const res = await fetch(`${API_BASE_URL}/teams/${encodeURIComponent(teamId)}`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (!res.ok) {
+      return null
+    }
+
+    const json = await res.json()
+    return json.data || null
+  } catch {
+    return null
+  }
+}
+export async function fetchTeamCompetitionDetail(
+  teamId: string,
+  token?: string | null
+): Promise<{ competition: ApiCompetition; team: ApiTeam; team_roles: ApiTeamRole[]; team_codes: ApiTeamCode[] } | null> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const authToken = typeof token === "string" ? token : (token === null || token === false ? null : getStoredToken())
+    if (authToken) {
+      headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
+    }
+
+    const res = await fetch(`${API_BASE_URL}/teams/${encodeURIComponent(teamId)}/competition`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (!res.ok) {
+      return null
+    }
+
+    const json = await res.json()
+    if (!json) return null
+    const payload = json.data?.competition ? json.data : (json.data?.data || json.data || null)
+    return payload || null
+  } catch {
+    return null
+  }
+}
+
+
+export async function fetchMyTeams(token?: string | null): Promise<ApiTeam[]> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (!authToken) return []
+    headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
+
+    const res = await fetch(`${API_BASE_URL}/competitions/my-teams`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (!res.ok) return []
+    const json = await res.json()
+    return json.data || []
+  } catch {
+    return []
+  }
+}
+
+export async function fetchMyTeamByCompetitionId(
+  competitionIdOrSlug: string,
+  token?: string | null
+): Promise<ApiTeam | null> {
+  try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (!authToken) return null
+    headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
+
+    const res = await fetch(`${API_BASE_URL}/competitions/${encodeURIComponent(competitionIdOrSlug)}/my-team`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (!res.ok) return null
+    const json = await res.json()
+    return json.data || null
+  } catch {
+    return null
+  }
 }
 
 export interface ApiUser {
@@ -340,12 +571,41 @@ export async function fetchApiCompetitionById(id: string, token?: string | Recor
       cache: "no-store",
     })
 
-    if (!res.ok) {
-      return null
+    if (res.ok) {
+      const json: ApiSingleCompetitionResponse = await res.json()
+      if (json.data) return json.data
     }
 
-    const json: ApiSingleCompetitionResponse = await res.json()
-    return json.data || null
+    const allRes = await fetch(`${API_BASE_URL}/competitions`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    if (allRes.ok) {
+      const json: ApiCompetitionsResponse = await allRes.json()
+      if (json.data && Array.isArray(json.data)) {
+        const found = json.data.find((comp) => {
+          if (comp.id === id) return true
+          const generatedSlug = comp.name ? comp.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") : comp.id
+          return generatedSlug === id
+        })
+        if (found) {
+          const detailRes = await fetch(`${API_BASE_URL}/competitions/${encodeURIComponent(found.id)}`, {
+            method: "GET",
+            headers,
+            cache: "no-store",
+          })
+          if (detailRes.ok) {
+            const detailJson: ApiSingleCompetitionResponse = await detailRes.json()
+            if (detailJson.data) return detailJson.data
+          }
+          return found
+        }
+      }
+    }
+
+    return null
   } catch {
     return null
   }

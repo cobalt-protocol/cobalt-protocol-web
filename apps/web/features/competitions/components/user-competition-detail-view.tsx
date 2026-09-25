@@ -1,6 +1,12 @@
 'use client';
 
 import React from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAccount } from 'wagmi';
+import {
+  fetchTokenPrizeByCompetitionId,
+  getTokenSymbol,
+} from '@/lib/competitions-api';
 import {
   Badge,
   Breadcrumbs,
@@ -21,6 +27,7 @@ import {
   Wifi,
 } from "lucide-react";
 import type { Competition } from "../types";
+import { getPrizeTotal } from "../lib/competition-selectors";
 import { CompetitionOverview } from "./competition-overview";
 import { CompetitionTimeline } from "./competition-timeline";
 
@@ -34,6 +41,20 @@ export function UserCompetitionDetailView({
   guidebookUrl,
 }: UserViewProps) {
   const effectiveGuidebookUrl = guidebookUrl || competition.guidebookUrl;
+  const { chain } = useAccount();
+  const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
+  const competitionId = competition.id || competition.slug;
+
+  const { data: tokenPrizeData } = useQuery({
+    queryKey: ["competition-token-prize", competitionId],
+    queryFn: () => fetchTokenPrizeByCompetitionId(competitionId),
+    enabled: Boolean(competitionId),
+  });
+
+  const tokenSymbol =
+    (tokenPrizeData?.token_symbol || tokenPrizeData?.symbol) ??
+    getTokenSymbol(tokenPrizeData?.token_address, connectedNativeSymbol) ??
+    competition.currency;
 
   return (
     <PageContainer>
@@ -74,7 +95,7 @@ export function UserCompetitionDetailView({
             },
             {
               label: "Prize Currency",
-              value: `${competition.currency} Stablecoin`,
+              value: `${tokenSymbol} Token`,
               caption: "Arbitrum escrow",
               icon: Coins,
             },
@@ -189,8 +210,13 @@ export function UserCompetitionDetailView({
                   <strong className="text-xl">
                     {formatMoney(prize.amount)}
                   </strong>
+                  {getPrizeTotal(competition) > 0 && (
+                    <p className="text-[11px] font-semibold text-primary">
+                      {Math.round((prize.amount / getPrizeTotal(competition)) * 100)}% allocation
+                    </p>
+                  )}
                   <p className="text-[10px] font-bold text-teal-700">
-                    {competition.currency} Escrow
+                    {tokenSymbol} Escrow
                   </p>
                 </div>
               </div>
