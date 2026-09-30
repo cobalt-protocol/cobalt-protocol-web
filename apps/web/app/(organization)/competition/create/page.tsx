@@ -1,4 +1,4 @@
-'use client';
+import { OrganizerCompetitionForm } from "@/features/organizer/components/competition-form"
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';

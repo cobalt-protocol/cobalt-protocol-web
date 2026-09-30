@@ -1,4 +1,4 @@
-"use client";
+import { OrganizerCompetitionList } from "@/features/organizer/components/competition-list"
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -150,8 +150,8 @@ function determineStatus(comp: ApiCompetition): CompetitionStatus {
 function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string): string {
     if (comp.prize_winners && comp.prize_winners.length > 0) {
         const total = comp.prize_winners.reduce((acc, w) => {
-          const val = w.prize_amount ?? w.amount ?? 0
-          return acc + parse18DecimalAmount(val, 18)
+            const val = w.prize_amount ?? w.amount ?? 0
+            return acc + parse18DecimalAmount(val, 18)
         }, 0);
         if (total > 0) {
             return total.toLocaleString("en-US");
