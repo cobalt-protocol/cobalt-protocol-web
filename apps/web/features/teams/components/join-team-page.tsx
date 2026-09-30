@@ -108,7 +108,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
               href={
                 membership.status === "pending"
                   ? routes.dashboard
-                  : routes.workspace(competition.slug)
+                  : routes.workspace(competition.id)
               }
             >
               View your {membership.status === "pending" ? "request" : "team"}

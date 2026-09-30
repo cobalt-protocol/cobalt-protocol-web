@@ -1,3 +1,6 @@
+"use client"
+
+import React from "react"
 import Link from "next/link"
 import {
   ArrowRight,
@@ -9,11 +12,15 @@ import {
   ShieldCheck,
   type LucideIcon,
 } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { useAccount } from "wagmi"
 import { Badge, primaryLinkClass } from "@/components/ui/page-primitives"
-import { formatMoney, formatNumber } from "@/lib/format"
+import { formatNumber } from "@/lib/format"
 import { routes } from "@/lib/routes"
+import { fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol } from "@/lib/competitions-api"
 import { getDaysRemaining, getPrizeTotal } from "../lib/competition-selectors"
 import type { Competition, CompetitionIcon } from "../types"
+
 const icons: Record<CompetitionIcon, LucideIcon> = {
   bot: Bot,
   landmark: Landmark,
@@ -21,14 +28,58 @@ const icons: Record<CompetitionIcon, LucideIcon> = {
   palette: Palette,
   shield: ShieldCheck,
 }
+
 export function CompetitionCard({
   competition,
   referenceDate,
 }: {
   competition: Competition
-  referenceDate: string
+  referenceDate?: string
 }) {
   const Icon = icons[competition.icon]
+  const { chain } = useAccount()
+  const connectedNativeSymbol = chain?.nativeCurrency?.symbol
+
+  const rawTxHash = competition.txHash || competition.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`
+  const explorerBaseUrl = (chain?.blockExplorers?.default?.url || "https://scan.bohr.life").replace(/\/$/, "")
+  const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`
+
+  const { data: tokenPrizeData } = useQuery({
+    queryKey: ["competition-token-prize", competition.id],
+    queryFn: () => fetchTokenPrizeByCompetitionId(competition.id),
+    enabled: Boolean(competition.id),
+  })
+
+  const prizeDisplay = React.useMemo(() => {
+    if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
+      const formatted = formatTokenPrize(tokenPrizeData.total_prize, tokenPrizeData.token_address, connectedNativeSymbol)
+      const lastSpaceIndex = formatted.lastIndexOf(" ")
+      if (lastSpaceIndex !== -1) {
+        const amount = formatted.slice(0, lastSpaceIndex)
+        const symbol = formatted.slice(lastSpaceIndex + 1)
+        return (
+          <>
+            {amount}{" "}
+            <span className="text-[10px] font-medium text-teal-700">
+              {symbol}
+            </span>
+          </>
+        )
+      }
+      return formatted
+    }
+    const symbol = getTokenSymbol(null, connectedNativeSymbol)
+    return (
+      <>
+        {formatNumber(getPrizeTotal(competition))}{" "}
+        <span className="text-[10px] font-medium text-teal-700">
+          {symbol}
+        </span>
+      </>
+    )
+  }, [tokenPrizeData, competition, connectedNativeSymbol])
+
   return (
     <article className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-border/50 bg-white">
       <div className="flex-1 bg-secondary/60 p-5">
@@ -59,14 +110,21 @@ export function CompetitionCard({
           <span className="flex items-center gap-1 text-muted-foreground">
             <Clock3 size={12} />
             {getDaysRemaining(
-              competition.registrationEndsAt,
+              competition.endsAt,
               referenceDate
             )}{" "}
             days left
           </span>
         </div>
         <h3 className="mt-2 text-lg leading-snug font-extrabold tracking-tight">
-          {competition.title}
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline hover:text-primary transition-colors"
+          >
+            {competition.title}
+          </a>
         </h3>
         <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
           {competition.description}
@@ -83,10 +141,7 @@ export function CompetitionCard({
               Prize vault
             </p>
             <strong className="text-xl font-extrabold">
-              {formatMoney(getPrizeTotal(competition))}{" "}
-              <span className="text-[10px] font-medium text-teal-700">
-                {competition.currency}
-              </span>
+              {prizeDisplay}
             </strong>
           </div>
           <div className="text-right">

@@ -1,12 +1,12 @@
 "use client"
 import { useState, type FormEvent } from "react"
-import { Globe2, LockKeyhole, Sparkles, UserPlus } from "lucide-react"
+import { Check, Globe2, Loader2, LockKeyhole, Plus, Sparkles, UserPlus } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import { fieldClass } from "@/components/ui/page-primitives"
 import type { BuilderProfile } from "@/features/profile/types"
 import type { CreateTeamInput, RegistrationCompetition } from "../types"
 import { validateCreateTeam } from "../lib/registration-validation"
-const suggestions = [
+const defaultSuggestions = [
   "UI/UX Designer",
   "ML / PyTorch",
   "Rust / Stylus",
@@ -21,22 +21,60 @@ export function CreateTeamForm({
   competition: RegistrationCompetition
   profile: BuilderProfile
   onCancel: () => void
-  onCreate: (input: CreateTeamInput) => string | null
+  onCreate: (input: CreateTeamInput) => Promise<string | null> | string | null
 }) {
   const [input, setInput] = useState<CreateTeamInput>({
     name: "",
     visibility: "public",
     requirements: "",
   })
+  const [suggestions, setSuggestions] = useState<string[]>(defaultSuggestions)
+  const [selectedTags, setSelectedTags] = useState<string[]>([])
+  const [customTag, setCustomTag] = useState("")
   const [error, setError] = useState("")
-  function submit(event: FormEvent<HTMLFormElement>) {
+  const [isSubmitting, setIsSubmitting] = useState(false)
+
+  function toggleTag(tag: string) {
+    setSelectedTags((prev) =>
+      prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]
+    )
+  }
+
+  function handleAddCustomTag() {
+    const trimmed = customTag.trim()
+    if (!trimmed) return
+    if (!suggestions.includes(trimmed)) {
+      setSuggestions((prev) => [...prev, trimmed])
+    }
+    if (!selectedTags.includes(trimmed)) {
+      setSelectedTags((prev) => [...prev, trimmed])
+    }
+    setCustomTag("")
+  }
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
-    const validation = validateCreateTeam(input)
+    const payload: CreateTeamInput = {
+      ...input,
+      skills: selectedTags,
+    }
+    const validation = validateCreateTeam(payload)
     if (validation) {
       setError(validation)
       return
     }
-    setError(onCreate(input) ?? "")
+    setError("")
+    setIsSubmitting(true)
+    try {
+      const resErr = await onCreate(payload)
+      if (resErr) {
+        setError(resErr)
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to create team")
+    } finally {
+      setIsSubmitting(false)
+    }
   }
   return (
     <form onSubmit={submit}>
@@ -124,9 +162,8 @@ export function CreateTeamForm({
         </p>
         <textarea
           id="team-requirements"
-          required
           maxLength={2000}
-          rows={4}
+          rows={3}
           className={fieldClass + " mt-3 bg-white"}
           value={input.requirements}
           onChange={(event) =>
@@ -134,31 +171,60 @@ export function CreateTeamForm({
           }
           placeholder="Looking for a UI/UX designer and a machine learning engineer..."
         />
-        <p className="mt-4 text-[10px] text-muted-foreground uppercase">
-          Quick suggestions (tap to append)
-        </p>
+        <div className="mt-4 flex items-center justify-between">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+            Quick suggestion tags (tap to select/unselect)
+          </p>
+          {selectedTags.length > 0 && (
+            <span className="text-[10px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+              {selectedTags.length} tag(s) selected
+            </span>
+          )}
+        </div>
         <div className="mt-2 flex flex-wrap gap-2">
-          {suggestions.map((suggestion) => (
-            <button
-              key={suggestion}
-              type="button"
-              className="rounded-full bg-blue-100 px-3 py-1 text-xs disabled:opacity-50"
-              disabled={
-                input.requirements.includes(suggestion) ||
-                input.requirements.length + suggestion.length + 2 > 2000
+          {suggestions.map((suggestion) => {
+            const isSelected = selectedTags.includes(suggestion)
+            return (
+              <button
+                key={suggestion}
+                type="button"
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${isSelected
+                    ? "bg-teal-600 text-white shadow-sm hover:bg-teal-700 ring-2 ring-teal-600/30"
+                    : "bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200/70"
+                  }`}
+                onClick={() => toggleTag(suggestion)}
+              >
+                {isSelected ? <Check size={12} className="stroke-[2.5]" /> : <Plus size={12} />}
+                <span>{suggestion}</span>
+              </button>
+            )
+          })}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <input
+            type="text"
+            value={customTag}
+            onChange={(event) => setCustomTag(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault()
+                handleAddCustomTag()
               }
-              onClick={() =>
-                setInput({
-                  ...input,
-                  requirements: [input.requirements.trim(), suggestion]
-                    .filter(Boolean)
-                    .join(", "),
-                })
-              }
-            >
-              + {suggestion}
-            </button>
-          ))}
+            }}
+            placeholder="Add custom suggestion tag (e.g. Frontend / React)..."
+            className="flex-1 rounded-xl border border-input bg-white px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          />
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAddCustomTag}
+            disabled={!customTag.trim()}
+            className="h-auto py-1.5 px-3 text-xs gap-1"
+          >
+            <Plus size={12} />
+            Add Tag
+          </Button>
         </div>
       </section>
       <div className="mt-6 flex items-center gap-3 rounded-xl bg-blue-50 p-4">
@@ -186,12 +252,17 @@ export function CreateTeamForm({
           variant="secondary"
           className="h-11 px-5"
           onClick={onCancel}
+          disabled={isSubmitting}
         >
           Cancel
         </Button>
-        <Button type="submit" className="h-11 px-5">
-          <UserPlus size={17} />
-          Create Team
+        <Button type="submit" className="h-11 px-5" disabled={isSubmitting}>
+          {isSubmitting ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <UserPlus size={17} />
+          )}
+          {isSubmitting ? "Creating..." : "Create Team"}
         </Button>
       </div>
     </form>

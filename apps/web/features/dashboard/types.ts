@@ -10,6 +10,8 @@ export type DashboardPhase = (typeof dashboardPhases)[number]
 export type DashboardFilter = "all" | DashboardPhase
 export interface DashboardCompetition {
   id: string
+  txHash?: string | null
+  tx_hash?: string | null
   competitionSlug: string | null
   title: string
   category: string

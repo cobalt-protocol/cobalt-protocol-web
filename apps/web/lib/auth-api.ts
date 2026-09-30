@@ -11,6 +11,18 @@ export interface User {
   updated_at?: string | null
   deleted_at?: string | null
   role?: UserRole
+  pitch?: string | null
+  description?: string | null
+  github_link?: string | null
+  linkedin_link?: string | null
+  social_media?: {
+    github_link?: string | null
+    linkedin_link?: string | null
+  } | null
+  skill_description?: {
+    description?: string | null
+  } | null
+  skills?: Array<{ name?: string; skill_name?: string; level?: string }>
 }
 
 export interface NonceData {
@@ -150,11 +162,13 @@ export async function verifySignature(params: {
 }
 
 export async function getMe(token: string): Promise<UserProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/@me`, {
+  const response = await fetch(`${API_BASE_URL}/auth/me`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,
+      "Cache-Control": "no-cache",
     },
+    cache: "no-store",
   })
 
   if (!response.ok) {

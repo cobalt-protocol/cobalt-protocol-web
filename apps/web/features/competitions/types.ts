@@ -30,6 +30,8 @@ export interface JudgingCriterion {
 export interface Competition {
   id: string
   slug: string
+  txHash?: string | null
+  tx_hash?: string | null
   title: string
   organizer: string
   organizerDescription: string
@@ -38,6 +40,7 @@ export interface Competition {
   icon: CompetitionIcon
   status: CompetitionStatus
   description: string
+  requirement?: string
   registrationEndsAt: string
   startsAt: string
   endsAt: string

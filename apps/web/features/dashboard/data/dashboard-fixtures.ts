@@ -1,4 +1,5 @@
 import type { DashboardCompetition, DashboardProfile } from "../types"
+import { TOKENS } from "@/lib/tokens"
 
 export const dashboardProfile: DashboardProfile = {
   name: "Alex Rivera",
@@ -37,7 +38,7 @@ export const dashboardCompetitions: readonly DashboardCompetition[] = [
     teamName: "VoltGrid Sentry",
     memberCount: 2,
     amountUsd: 150000,
-    currency: "USDC",
+    currency: TOKENS.USDT.symbol,
     poolLabel: "Contract Escrow Pool",
     actionLabel: "View Submission",
     source: "fixture",
@@ -52,7 +53,7 @@ export const dashboardCompetitions: readonly DashboardCompetition[] = [
     teamName: "VoltGrid Sentry",
     memberCount: 2,
     amountUsd: 35000,
-    currency: "USDC",
+    currency: TOKENS.USDT.symbol,
     poolLabel: "Available to Claim",
     actionLabel: "Claim Escrow",
     source: "fixture",

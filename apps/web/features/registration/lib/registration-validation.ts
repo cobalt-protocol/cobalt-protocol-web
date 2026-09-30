@@ -18,8 +18,8 @@ export function validateCreateTeam(input: CreateTeamInput): string | null {
   if (!input.name.trim()) return "Enter a team name."
   if (input.name.trim().length > 24)
     return "Team names can be at most 24 characters."
-  if (!input.requirements.trim())
-    return "Describe the roles or skills your team needs."
+  if (!input.requirements.trim() && (!input.skills || input.skills.length === 0))
+    return "Describe the roles or skills your team needs or select at least one skill tag."
   if (input.requirements.length > 2000)
     return "Keep your requirements under 2,000 characters."
   return null

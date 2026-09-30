@@ -1,19 +1,26 @@
 import type { Competition, CompetitionFilters } from "../types"
+
 export const getPrizeTotal = (competition: Competition): number =>
   competition.prizes.reduce((sum, prize) => sum + prize.amount, 0)
+
 export function getDaysRemaining(
-  deadline: string,
-  referenceDate: string
+  deadline?: string,
+  referenceDate?: string
 ): number {
+  if (!deadline) return 0
+  const refMs = referenceDate ? Date.parse(referenceDate) : Date.now()
+  const targetMs = Date.parse(deadline)
+  if (isNaN(refMs) || isNaN(targetMs)) return 0
   return Math.max(
     0,
-    Math.ceil((Date.parse(deadline) - Date.parse(referenceDate)) / 86_400_000)
+    Math.ceil((targetMs - refMs) / 86_400_000)
   )
 }
+
 export function selectCompetitions(
   competitions: readonly Competition[],
   filters: CompetitionFilters,
-  referenceDate: string
+  referenceDate?: string
 ): Competition[] {
   const query = filters.query.trim().toLowerCase()
   return competitions
@@ -31,7 +38,7 @@ export function selectCompetitions(
         filters.categories.length === 0 ||
         filters.categories.includes(competition.category)
       const days = getDaysRemaining(
-        competition.registrationEndsAt,
+        competition.endsAt,
         referenceDate
       )
       const matchesDeadline =
@@ -43,7 +50,7 @@ export function selectCompetitions(
     .sort((a, b) => {
       if (filters.sort === "deadline-asc")
         return (
-          Date.parse(a.registrationEndsAt) - Date.parse(b.registrationEndsAt)
+          Date.parse(a.endsAt) - Date.parse(b.endsAt)
         )
       if (filters.sort === "participants-desc")
         return b.participants - a.participants

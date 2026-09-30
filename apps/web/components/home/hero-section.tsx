@@ -151,6 +151,7 @@ export function HeroSection() {
                   alt={partner.name}
                   width={28}
                   height={28}
+                  style={{ height: "auto", width: "auto" }}
                   className={`h-6 w-6 object-contain sm:h-7 sm:w-7 ${partner.className ?? ""}`}
                 />
                 <span className="text-sm font-bold text-[#1a202c] sm:text-base md:text-lg">

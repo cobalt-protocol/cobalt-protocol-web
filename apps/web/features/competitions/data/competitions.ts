@@ -1,9 +1,12 @@
 import type { Competition } from "../types"
+import { TOKENS } from "@/lib/tokens"
 
 export const competitionPreviewDate = "2025-04-04T00:00:00Z"
 const baseCompetition: Competition = {
   id: "agents",
   slug: "autonomous-agents-global-hackathon",
+  txHash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+  tx_hash: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
   title: "Autonomous Agents Global Hackathon 2025",
   organizer: "OpenAI & Cobalt",
   organizerDescription:
@@ -20,7 +23,7 @@ const baseCompetition: Competition = {
   participants: 1240,
   teamCount: 280,
   maxTeamSize: 5,
-  currency: "USDC",
+  currency: TOKENS.USDT.symbol,
   prizes: [
     {
       id: "first",

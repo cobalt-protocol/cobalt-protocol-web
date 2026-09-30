@@ -14,13 +14,13 @@ import { routes } from "@/lib/routes"
 export function FeaturedCompetitions({
   referenceDate,
 }: {
-  referenceDate: string
+  referenceDate?: string
 }) {
   const [category, setCategory] = useState<CompetitionCategory | "All">("All")
 
   const { data: competitions = [], isLoading } = useQuery({
-    queryKey: ["competitions"],
-    queryFn: fetchCompetitions,
+    queryKey: ["competitions-public"],
+    queryFn: () => fetchCompetitions(null),
   })
 
   const featured = competitions.slice(0, 3)

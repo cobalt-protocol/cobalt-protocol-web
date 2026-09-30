@@ -22,6 +22,27 @@ if (typeof window !== "undefined") {
       return originalDefineProperty.call(this, obj, prop, attributes)
     }
   } catch (_) {}
+
+  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout, MetaMask session restore)
+  window.addEventListener("unhandledrejection", (event) => {
+    const reason = event.reason
+    const message = reason?.message || String(reason || "")
+    const stack = reason?.stack || ""
+    const fullStr = `${message} ${stack} ${String(reason)}`
+    if (
+      fullStr.includes("Aave") ||
+      fullStr.includes("AaveAccount") ||
+      fullStr.includes("EIP1193") ||
+      fullStr.includes("lazy connection") ||
+      fullStr.includes("MetaMask") ||
+      fullStr.includes("restoring session") ||
+      fullStr.includes("chrome-extension://") ||
+      fullStr.includes("moz-extension://")
+    ) {
+      console.warn("Prevented unhandled browser extension rejection:", message || reason)
+      event.preventDefault()
+    }
+  })
 }
 
 export const botChainTestnet = defineChain({

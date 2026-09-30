@@ -21,7 +21,7 @@ export function TeamCard({
   const remaining = Math.max(0, capacity - team.memberCount)
   return (
     <article
-      className={`flex flex-col rounded-2xl border bg-white p-5 md:p-6 ${onDiscard ? "border-teal-700/25 shadow-sm" : "border-border/40"}`}
+      className={`flex flex-col rounded-2xl border bg-white p-5 md:p-6 ${onDiscard ? "border-teal-700/25" : "border-border/40"}`}
     >
       {onDiscard && (
         <div className="mb-4 flex items-center justify-between border-b border-border/50 pb-3">
