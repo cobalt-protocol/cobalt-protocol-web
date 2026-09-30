@@ -18,7 +18,7 @@ export function useMemberships() {
       }
     }
 
-    if (pathname?.startsWith("/organization")) {
+    if (pathname?.startsWith("/organization") || pathname?.includes("/join-team")) {
       setMemberships([])
       setReady(true)
       return
@@ -76,7 +76,7 @@ export function useMemberships() {
   }, [pathname])
 
   useEffect(() => {
-    if (pathname?.startsWith("/organization")) {
+    if (pathname?.startsWith("/organization") || pathname?.includes("/join-team")) {
       setMemberships([])
       setReady(true)
       return
