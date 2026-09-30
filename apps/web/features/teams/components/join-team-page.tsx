@@ -1,9 +1,11 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import { ArrowRight, KeyRound, Loader2, RefreshCw, Search, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
+import { useAccount } from "wagmi"
 import { Button } from "@workspace/ui/components/button"
 import {
   Breadcrumbs,
@@ -19,6 +21,7 @@ import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import {
   acceptTeamInviteByCode,
   fetchTeamsByCompetitionId,
+  getStoredToken,
   parseCapacityFromFormation,
   requestJoinTeam,
 } from "@/lib/competitions-api"
@@ -33,6 +36,8 @@ import type { TeamListing } from "../types"
 import { TeamCard } from "./team-card"
 
 export function JoinTeamPage({ competition }: { competition: Competition }) {
+  const router = useRouter()
+  const { isConnected, status: accountStatus } = useAccount()
   const { joinTeam, register } = useSiteActions()
   const { memberships, ready } = useMemberships()
   const [query, setQuery] = useState("")
@@ -43,6 +48,22 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
   const [refreshOffset, setRefreshOffset] = useState(0)
   const [submittingTeamId, setSubmittingTeamId] = useState<string | null>(null)
   const [isSubmittingCode, setIsSubmittingCode] = useState(false)
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+  const [hasCheckedToken, setHasCheckedToken] = useState(false)
+
+  useEffect(() => {
+    setStoredToken(getStoredToken())
+    setHasCheckedToken(true)
+  }, [])
+
+  useEffect(() => {
+    const token = storedToken || getStoredToken()
+    const isWagmiLoading =
+      accountStatus === "connecting" || accountStatus === "reconnecting"
+    if (hasCheckedToken && !isWagmiLoading && !isConnected && !token) {
+      router.push(routes.competitions)
+    }
+  }, [hasCheckedToken, isConnected, accountStatus, storedToken, router])
 
   // Fetch teams from NestJS API endpoint GET /api/v1/teams/competition/:competitionId
   const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
