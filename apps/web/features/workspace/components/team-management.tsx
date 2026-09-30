@@ -1,5 +1,5 @@
 "use client"
-import { useReducer, useState } from "react"
+import { useEffect, useReducer, useState } from "react"
 import { Pencil, Trash2, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -12,21 +12,48 @@ import { Modal } from "@/components/ui/modal"
 import { mockTeam } from "../data/workspace"
 import { teamReducer } from "../lib/team-reducer"
 import type { TeamState } from "../types"
+import { parseCapacityFromFormation } from "@/lib/competitions-api"
+
 export function TeamManagement({
   capacity,
+  formation,
   initialTeam = mockTeam,
+  isLeader = true,
   onRename,
+  onUpdateTeam,
+  onAcceptRequest,
+  onDeclineRequest,
 }: {
   capacity: number
+  formation?: string
   initialTeam?: TeamState
+  isLeader?: boolean
   onRename?: (name: string) => boolean
+  onUpdateTeam?: (payload: {
+    name?: string
+    description?: string
+    visibility?: boolean
+    skills_suggestions?: string[]
+  }) => Promise<{ success: boolean; error?: string }>
+  onAcceptRequest?: (requestId: string) => Promise<boolean | void>
+  onDeclineRequest?: (requestId: string) => Promise<boolean | void>
 }) {
   const [team, dispatch] = useReducer(teamReducer, initialTeam)
   const [editing, setEditing] = useState(false)
   const [name, setName] = useState(team.name)
+  const [description, setDescription] = useState(team.description || "")
+  const [visibility, setVisibility] = useState<boolean>(team.visibility ?? true)
+  const [skillsInput, setSkillsInput] = useState((team.skills || []).join(", "))
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [modalError, setModalError] = useState("")
   const [removing, setRemoving] = useState<string | null>(null)
   const [feedback, setFeedback] = useState("")
-  const remaining = Math.max(0, capacity - team.members.length)
+
+  useEffect(() => {
+    dispatch({ type: "set-team", team: initialTeam })
+  }, [initialTeam])
+  const effectiveCapacity = formation ? parseCapacityFromFormation(formation, capacity) : capacity
+  const remaining = Math.max(0, effectiveCapacity - team.members.length)
   return (
     <>
       <Panel>
@@ -35,8 +62,8 @@ export function TeamManagement({
           description="Manage active squad members, administrative permissions, and team metadata."
           aside={
             <Badge>
-              {team.members.length}/{capacity} Members ({remaining} Slots
-              Available)
+              {team.members.length}/{effectiveCapacity} Members ({remaining}{" "}
+              {remaining === 1 ? "Slot" : "Slots"} Available)
             </Badge>
           }
         />
@@ -47,20 +74,35 @@ export function TeamManagement({
           <div>
             <h3 className="text-sm font-bold">{team.name}</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              Primary track: Autonomous Agent Frameworks & Multi-Agent Consensus
+              {team.description || "Primary track: Autonomous Agent Frameworks & Multi-Agent Consensus"}
             </p>
+            {team.skills && team.skills.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {team.skills.map((skill) => (
+                  <Badge key={skill} tone="neutral">
+                    {skill}
+                  </Badge>
+                ))}
+              </div>
+            )}
           </div>
-          <Button
-            variant="outline"
-            className="ml-auto"
-            onClick={() => {
-              setName(team.name)
-              setEditing(true)
-            }}
-          >
-            <Pencil size={13} />
-            Edit Team Profile
-          </Button>
+          {isLeader && (
+            <Button
+              variant="outline"
+              className="ml-auto"
+              onClick={() => {
+                setName(team.name)
+                setDescription(team.description || "")
+                setVisibility(team.visibility ?? true)
+                setSkillsInput((team.skills || []).join(", "))
+                setModalError("")
+                setEditing(true)
+              }}
+            >
+              <Pencil size={13} />
+              Edit Team Profile
+            </Button>
+          )}
         </div>
         <div className="overflow-hidden rounded-xl border border-border">
           {team.members.map((member) => (
@@ -82,9 +124,9 @@ export function TeamManagement({
               </div>
               {member.role === "lead" ? (
                 <span className="ml-auto text-[10px] text-muted-foreground">
-                  Squad Owner
+                  Leader
                 </span>
-              ) : (
+              ) : isLeader ? (
                 <Button
                   variant="outline"
                   aria-label={`Remove ${member.name}`}
@@ -94,7 +136,7 @@ export function TeamManagement({
                   <Trash2 size={12} />
                   Remove
                 </Button>
-              )}
+              ) : null}
             </div>
           ))}
         </div>
@@ -130,13 +172,16 @@ export function TeamManagement({
                 <div className="ml-auto flex gap-2">
                   <Button
                     variant="outline"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (onDeclineRequest) {
+                        await onDeclineRequest(request.id)
+                      }
                       dispatch({
                         type: "decline-request",
                         requestId: request.id,
                       })
                       setFeedback(
-                        `Declined ${request.member.name} in this preview.`
+                        `Declined ${request.member.name}.`
                       )
                     }}
                   >
@@ -144,14 +189,17 @@ export function TeamManagement({
                   </Button>
                   <Button
                     disabled={remaining === 0}
-                    onClick={() => {
+                    onClick={async () => {
+                      if (onAcceptRequest) {
+                        await onAcceptRequest(request.id)
+                      }
                       dispatch({
                         type: "accept-request",
                         requestId: request.id,
                         capacity,
                       })
                       setFeedback(
-                        `Accepted ${request.member.name} into the preview squad.`
+                        `Accepted ${request.member.name} into the squad.`
                       )
                     }}
                   >
@@ -186,36 +234,125 @@ export function TeamManagement({
           {feedback}
         </p>
       </Panel>
-      <Modal title="Edit Team Profile" open={editing} onOpenChange={setEditing}>
-        <form
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!name.trim()) return
-            if (onRename && !onRename(name)) {
-              setFeedback(
-                "Could not save the team name. Use up to 24 characters and check browser storage."
-              )
-              return
-            }
-            dispatch({ type: "rename", name })
-            setEditing(false)
-          }}
-        >
-          <label className="mt-5 block text-sm font-semibold">
-            Team name
-            <input
-              className={fieldClass + " mt-2"}
-              required
-              maxLength={80}
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-            />
-          </label>
-          <Button type="submit" className="mt-5 h-10 w-full">
-            Save team name
-          </Button>
-        </form>
-      </Modal>
+      {isLeader && (
+        <Modal title="Edit Team Profile" open={editing} onOpenChange={setEditing}>
+          <form
+            onSubmit={async (event) => {
+              event.preventDefault()
+              if (!name.trim()) return
+
+              setIsSubmitting(true)
+              setModalError("")
+
+              const parsedSkills = skillsInput
+                .split(",")
+                .map((s) => s.trim())
+                .filter(Boolean)
+
+              if (onUpdateTeam) {
+                const res = await onUpdateTeam({
+                  name: name.trim(),
+                  description: description.trim(),
+                  visibility,
+                  skills_suggestions: parsedSkills,
+                })
+
+                if (!res.success) {
+                  setModalError(res.error || "Failed to update team profile")
+                  setIsSubmitting(false)
+                  return
+                }
+              } else if (onRename) {
+                if (!onRename(name.trim())) {
+                  setModalError(
+                    "Could not save the team name. Use up to 24 characters and check browser storage."
+                  )
+                  setIsSubmitting(false)
+                  return
+                }
+              }
+
+              dispatch({
+                type: "update-details",
+                name: name.trim(),
+                description: description.trim(),
+                visibility,
+                skills: parsedSkills,
+              })
+              setFeedback("Team profile updated successfully.")
+              setIsSubmitting(false)
+              setEditing(false)
+            }}
+            className="space-y-4 pt-2"
+          >
+            {modalError && (
+              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                {modalError}
+              </div>
+            )}
+
+            <label className="block text-sm font-semibold">
+              Team name <span className="text-red-500">*</span>
+              <input
+                className={fieldClass + " mt-1.5"}
+                required
+                maxLength={80}
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="e.g. Cyber Warriors"
+              />
+            </label>
+
+            <label className="block text-sm font-semibold">
+              Team description
+              <textarea
+                className={fieldClass + " mt-1.5 min-h-[80px] resize-y py-2"}
+                rows={3}
+                maxLength={500}
+                value={description}
+                onChange={(event) => setDescription(event.target.value)}
+                placeholder="Describe your team focus, goals, or background..."
+              />
+            </label>
+
+            <label className="block text-sm font-semibold">
+              Team visibility
+              <select
+                className={fieldClass + " mt-1.5"}
+                value={visibility ? "public" : "private"}
+                onChange={(event) => setVisibility(event.target.value === "public")}
+              >
+                <option value="public">Public (Visible to everyone)</option>
+                <option value="private">Private (Invite only)</option>
+              </select>
+            </label>
+
+            <label className="block text-sm font-semibold">
+              Skills needed / suggestions <span className="text-xs font-normal text-muted-foreground">(comma separated)</span>
+              <input
+                className={fieldClass + " mt-1.5"}
+                value={skillsInput}
+                onChange={(event) => setSkillsInput(event.target.value)}
+                placeholder="e.g. Smart Contracts, Frontend, AI/ML"
+              />
+            </label>
+
+            <div className="flex justify-end gap-3 pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setEditing(false)}
+                disabled={isSubmitting}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" disabled={isSubmitting || !name.trim()}>
+                {isSubmitting ? "Saving..." : "Save Team Profile"}
+              </Button>
+            </div>
+          </form>
+        </Modal>
+      )}
       <Modal
         title="Remove team member?"
         open={removing !== null}

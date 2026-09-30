@@ -41,6 +41,7 @@ export interface Competition {
   status: CompetitionStatus
   description: string
   requirement?: string
+  formation?: string
   registrationEndsAt: string
   startsAt: string
   endsAt: string

@@ -1,4 +1,4 @@
-import { ArrowRight, RefreshCw, Sparkles, X } from "lucide-react"
+import { ArrowRight, Loader2, RefreshCw, Sparkles, X } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import type { TeamListing } from "../types"
 
@@ -6,6 +6,7 @@ interface TeamCardProps {
   team: TeamListing
   capacity: number
   disabled: boolean
+  isSubmitting?: boolean
   onRequest: () => void
   onDiscard?: () => void
   onRefresh?: () => void
@@ -14,6 +15,7 @@ export function TeamCard({
   team,
   capacity,
   disabled,
+  isSubmitting = false,
   onRequest,
   onDiscard,
   onRefresh,
@@ -104,12 +106,23 @@ export function TeamCard({
           ))}
         </div>
         <Button
-          disabled={disabled || remaining === 0}
+          disabled={disabled || remaining === 0 || isSubmitting}
           onClick={onRequest}
           className="shrink-0"
         >
-          {remaining === 0 ? "Team Full" : "Send Request"}
-          <ArrowRight size={14} />
+          {isSubmitting ? (
+            <>
+              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              Sending...
+            </>
+          ) : remaining === 0 ? (
+            "Team Full"
+          ) : (
+            <>
+              Send Request
+              <ArrowRight size={14} />
+            </>
+          )}
         </Button>
       </div>
     </article>

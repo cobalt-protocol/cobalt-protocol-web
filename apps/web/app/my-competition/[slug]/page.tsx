@@ -1,7 +1,8 @@
+import { redirect } from "next/navigation"
 import { getCompetitionById } from "@/features/competitions/data/competition-repository"
 import { CompetitionWorkspace } from "@/features/workspace/components/competition-workspace"
 import {
-  fetchTeamCompetitionDetail,
+  fetchTeamCompetitionDetailResult,
   mapApiCompetitionToCompetition,
 } from "@/lib/competitions-api"
 import type { Metadata } from "next"
@@ -32,15 +33,31 @@ export async function generateMetadata({
 
 export default async function MyCompetitionPage({ params }: PageProps) {
   const { slug } = await params
-  let competition = await getCompetitionById(slug)
+
+  const teamCompResult = await fetchTeamCompetitionDetailResult(slug)
+
   let teamId: string | undefined = slug
+  let competition = teamCompResult.data?.competition
+    ? mapApiCompetitionToCompetition(teamCompResult.data.competition)
+    : undefined
+
+  if (teamCompResult.data?.team?.id) {
+    teamId = teamCompResult.data.team.id
+  }
 
   if (!competition) {
-    const teamComp = await fetchTeamCompetitionDetail(slug)
-    if (teamComp?.competition) {
-      teamId = teamComp.team.id
-      competition = mapApiCompetitionToCompetition(teamComp.competition)
-    }
+    competition = await getCompetitionById(slug)
+  }
+
+  const targetCompId = competition?.id || competition?.slug || slug
+
+  if (
+    teamCompResult.status === 404 ||
+    teamCompResult.status === 401 ||
+    teamCompResult.status === 403 ||
+    !teamCompResult.data
+  ) {
+    redirect(`/competition/${encodeURIComponent(targetCompId)}`)
   }
 
   return (

@@ -1,5 +1,11 @@
-import React from 'react';
-import { ChevronRight } from 'lucide-react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useAccount } from 'wagmi';
+import { useQuery } from '@tanstack/react-query';
+import { fetchApiMe, getStoredToken } from '@/lib/competitions-api';
+import { ChevronRight, Loader2 } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
 const ChevronDownIcon = () => (
@@ -27,6 +33,46 @@ const CheckCircleIcon = () => (
 );
 
 export default function DetermineWinner() {
+    const router = useRouter();
+    const params = useParams();
+    const compId = (params?.id as string) || '';
+    const { isConnected } = useAccount();
+    const [storedToken, setStoredToken] = useState<string | null>(null);
+    const [hasCheckedToken, setHasCheckedToken] = useState(false);
+
+    useEffect(() => {
+        setStoredToken(getStoredToken());
+        setHasCheckedToken(true);
+    }, []);
+
+    const { data: meUser, isLoading: isLoadingMe } = useQuery({
+        queryKey: ["user-me", storedToken],
+        queryFn: () => fetchApiMe(storedToken || getStoredToken()),
+        enabled: Boolean(storedToken),
+    });
+
+    const isOrganizationRole = Boolean(
+        isConnected &&
+        storedToken &&
+        (meUser?.role === "organization" || meUser?.role === "organizer")
+    );
+
+    const isChecking = !hasCheckedToken || (Boolean(storedToken) && isLoadingMe);
+
+    useEffect(() => {
+        if (!isChecking && !isOrganizationRole) {
+            router.replace(compId ? `/organization/competition/${compId}` : '/organization/competition');
+        }
+    }, [isChecking, isOrganizationRole, compId, router]);
+
+    if (isChecking || !isOrganizationRole) {
+        return (
+            <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-6 text-slate-500">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mr-2" />
+                <span>{!isOrganizationRole && !isChecking ? "Redirecting..." : "Loading winner configuration..."}</span>
+            </div>
+        );
+    }
     // Data dummy untuk kategori
     const categories = [
         { id: 1, name: '1st Place', team: 'Team SwarmSynthetic' },

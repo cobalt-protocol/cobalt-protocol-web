@@ -5,6 +5,16 @@ export function teamReducer(state: TeamState, action: TeamAction): TeamState {
       const name = action.name.trim()
       return name ? { ...state, name } : state
     }
+    case "update-details": {
+      const name = action.name.trim()
+      return {
+        ...state,
+        ...(name ? { name } : {}),
+        description: action.description,
+        visibility: action.visibility,
+        skills: action.skills,
+      }
+    }
     case "remove-member":
       return {
         ...state,
@@ -35,5 +45,7 @@ export function teamReducer(state: TeamState, action: TeamAction): TeamState {
         requests: state.requests.filter((item) => item.id !== action.requestId),
       }
     }
+    case "set-team":
+      return action.team
   }
 }

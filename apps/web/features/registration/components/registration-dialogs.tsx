@@ -20,6 +20,7 @@ export function RegistrationDialogs({
   onCreate,
 }: RegistrationDialogsProps) {
   if (!dialog || dialog.kind === "wallet") return null
+  const activeProfile = dialog.profileOverride || profile
   const title =
     dialog.kind === "profile"
       ? "Set Up Your Profile"
@@ -55,18 +56,26 @@ export function RegistrationDialogs({
       ) : dialog.kind === "choice" ? (
         <ParticipationChoice
           competition={dialog.competition}
-          username={profile.username}
+          username={activeProfile.username}
           onCreate={() =>
-            onChange({ kind: "create", competition: dialog.competition })
+            onChange({
+              kind: "create",
+              competition: dialog.competition,
+              profileOverride: activeProfile,
+            })
           }
-          onJoin={() => onNavigate(routes.joinTeam(dialog.competition.slug))}
+          onJoin={() => onNavigate(routes.joinTeam(dialog.competition.id))}
         />
       ) : (
         <CreateTeamForm
           competition={dialog.competition}
-          profile={profile}
+          profile={activeProfile}
           onCancel={() =>
-            onChange({ kind: "choice", competition: dialog.competition })
+            onChange({
+              kind: "choice",
+              competition: dialog.competition,
+              profileOverride: activeProfile,
+            })
           }
           onCreate={onCreate}
         />

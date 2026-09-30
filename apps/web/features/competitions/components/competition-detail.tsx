@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useAccount } from 'wagmi';
 import {
@@ -25,25 +26,31 @@ interface CompetitionDetailProps {
   competition?: Competition;
   slug?: string;
   id?: string;
+  viewMode?: "user" | "organization" | "auto";
 }
 
 export function CompetitionDetail({
   competition: initialCompetition,
   slug,
   id,
+  viewMode = "auto",
 }: CompetitionDetailProps) {
+  const router = useRouter();
+  const { isConnected } = useAccount();
   const competitionId = id || slug || initialCompetition?.id || initialCompetition?.slug || "";
 
   const [storedToken, setStoredToken] = useState<string | null>(null);
+  const [hasCheckedToken, setHasCheckedToken] = useState(false);
 
   useEffect(() => {
     setStoredToken(getStoredToken());
+    setHasCheckedToken(true);
   }, []);
 
   const { chain } = useAccount();
   const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
 
-  const { data: meUser } = useQuery({
+  const { data: meUser, isLoading: isLoadingMe } = useQuery({
     queryKey: ["user-me", storedToken],
     queryFn: () => fetchApiMe(storedToken || getStoredToken()),
     enabled: Boolean(storedToken),
@@ -55,10 +62,12 @@ export function CompetitionDetail({
     enabled: Boolean(competitionId),
   });
 
+  const targetApiId = apiCompetition?.id || competitionId;
+
   const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
-    queryKey: ["competition-token-prize", competitionId],
-    queryFn: () => fetchTokenPrizeByCompetitionId(competitionId),
-    enabled: Boolean(competitionId),
+    queryKey: ["competition-token-prize", targetApiId],
+    queryFn: () => fetchTokenPrizeByCompetitionId(targetApiId),
+    enabled: Boolean(targetApiId),
   });
 
   const { data: fetchedUserCompetition } = useQuery({
@@ -86,13 +95,15 @@ export function CompetitionDetail({
   );
 
   const isOrganizationRole = Boolean(
-    meUser?.role === "organization" ||
-    meUser?.role === "organizer" ||
-    isOwner
+    isConnected &&
+    storedToken &&
+    (meUser?.role === "organization" ||
+     meUser?.role === "organizer" ||
+     isOwner)
   );
 
   const guidebookCid = apiCompetition?.guidebook_cid || effectiveCompetition?.guidebookUrl;
-  const ipfsGatewayUrl = process.env.NEXT_PUBLIC_IPFS_GATEWAY || "https://ipfs.io/ipfs";
+  const ipfsGatewayUrl = (process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || "http://localhost:8081/ipfs").replace(/\/$/, "");
   const guidebookUrl = guidebookCid
     ? guidebookCid.startsWith("http://") || guidebookCid.startsWith("https://")
       ? guidebookCid
@@ -116,9 +127,11 @@ export function CompetitionDetail({
     return `75,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
   }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, effectiveCompetition]);
 
+  const showOrgView = viewMode === "organization" || (viewMode === "auto" && isOrganizationRole);
+
   return (
     <div className="w-full">
-      {isOrganizationRole ? (
+      {showOrgView ? (
         <OrganizationCompetitionDetailView
           id={competitionId}
           apiCompetition={apiCompetition}

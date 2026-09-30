@@ -28,6 +28,11 @@ export function CompetitionOverview({
   const connectedNativeSymbol = chain?.nativeCurrency?.symbol
   const competitionId = competition.id || competition.slug
 
+  const rawTxHash = competition.txHash || competition.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`
+  const explorerBaseUrl = (chain?.blockExplorers?.default?.url || "https://scan.bohr.life").replace(/\/$/, "")
+  const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`
+
   const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
     queryKey: ["competition-token-prize", competitionId],
     queryFn: () => fetchTokenPrizeByCompetitionId(competitionId),
@@ -70,7 +75,14 @@ export function CompetitionOverview({
       <div>
         <Badge>{competition.category.toUpperCase()}</Badge>
         <h1 className="mt-4 text-2xl leading-snug font-extrabold tracking-tight md:text-3xl">
-          {competition.title}
+          <a
+            href={explorerUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="hover:underline hover:text-primary transition-colors"
+          >
+            {competition.title}
+          </a>
         </h1>
         <p className="mt-4 text-sm leading-7 text-muted-foreground">
           {competition.description}
@@ -145,44 +157,52 @@ export function CompetitionOverview({
             <span>Prize allocation</span>
             <strong>{rawFormatted}</strong>
           </div>
-          <div className="mt-3 flex h-2 overflow-hidden rounded-full">
-            {competition.prizes.map((prize, index) => {
-              const total = getPrizeTotal(competition);
-              const width = total > 0 ? (prize.amount / total) * 100 : 0;
-              const barColors = ["bg-primary", "bg-teal-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-indigo-500"];
-              return (
-                <span
-                  key={prize.id}
-                  style={{
-                    width: `${width}%`,
-                  }}
-                  className={barColors[index % barColors.length]}
-                />
-              );
-            })}
-          </div>
-          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
-            {competition.prizes.map((prize, index) => {
-              const total = getPrizeTotal(competition);
-              const pct = total > 0 ? Math.round((prize.amount / total) * 100) : 0;
-              const dotColors = ["bg-primary", "bg-teal-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-indigo-500"];
-              return (
-                <div key={prize.id} className="flex items-center justify-between gap-2 rounded-md bg-secondary/40 px-2.5 py-1.5 text-xs">
-                  <div className="flex items-center gap-1.5 min-w-0">
-                    <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dotColors[index % dotColors.length]}`} />
-                    <span className="truncate font-medium text-foreground">{prize.title}</span>
-                  </div>
-                  <div className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
-                    <span>{formatMoney(prize.amount)}</span>
-                    <span className="text-[10px] text-teal-700 font-bold">({pct}%)</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-2.5 text-[10px] text-muted-foreground">
-            {competition.prizes.length} award categories
-          </p>
+          {competition.prizes.length > 0 ? (
+            <>
+              <div className="mt-3 flex h-2 overflow-hidden rounded-full">
+                {competition.prizes.map((prize, index) => {
+                  const total = getPrizeTotal(competition);
+                  const width = total > 0 ? (prize.amount / total) * 100 : 0;
+                  const barColors = ["bg-primary", "bg-teal-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-indigo-500"];
+                  return (
+                    <span
+                      key={prize.id}
+                      style={{
+                        width: `${width}%`,
+                      }}
+                      className={barColors[index % barColors.length]}
+                    />
+                  );
+                })}
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 text-xs">
+                {competition.prizes.map((prize, index) => {
+                  const total = getPrizeTotal(competition);
+                  const pct = total > 0 ? Math.round((prize.amount / total) * 100) : 0;
+                  const dotColors = ["bg-primary", "bg-teal-500", "bg-amber-500", "bg-purple-500", "bg-rose-500", "bg-indigo-500"];
+                  return (
+                    <div key={prize.id} className="flex items-center justify-between gap-2 rounded-md bg-secondary/40 px-2.5 py-1.5 text-xs">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className={`h-2 w-2 flex-shrink-0 rounded-full ${dotColors[index % dotColors.length]}`} />
+                        <span className="truncate font-medium text-foreground">{prize.title}</span>
+                      </div>
+                      <div className="flex items-center gap-1 text-[11px] font-semibold text-muted-foreground">
+                        <span>{formatMoney(prize.amount)}</span>
+                        <span className="text-[10px] text-teal-700 font-bold">({pct}%)</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2.5 text-[10px] text-muted-foreground">
+                {competition.prizes.length} award categories
+              </p>
+            </>
+          ) : (
+            <p className="mt-3 text-xs text-muted-foreground">
+              No individual prize allocations configured yet.
+            </p>
+          )}
         </div>
       </div>
     </Panel>

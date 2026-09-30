@@ -1,12 +1,18 @@
 export const routes = {
   home: "/",
-  competitions: "/competitions",
+  competitions: "/competition",
   profile: "/profile",
   dashboard: "/dashboard",
-  organization: "/organization",
-  createCompetition: "/competition/create",
-  competition: (id: string) => `/competitions/${encodeURIComponent(id)}`,
-  joinTeam: (slug: string) =>
-    `/competitions/${encodeURIComponent(slug)}/join-team`,
-  workspace: (id: string) => `/my-competitions/${encodeURIComponent(id)}`,
+  organization: "/organization/competition",
+  createCompetition: "/organization/competition/create",
+  competition: (id: string) => `/competition/${encodeURIComponent(id)}`,
+  organizationCompetition: (id: string) => `/organization/competition/${encodeURIComponent(id)}`,
+  joinTeam: (id: string) =>
+    `/competition/${encodeURIComponent(id)}/join-team`,
+  organizationTeamDetail: (id: string) =>
+    `/organization/competition/${encodeURIComponent(id)}/team-detail`,
+  organizationWinner: (id: string) =>
+    `/organization/competition/${encodeURIComponent(id)}/winner`,
+  workspace: (id: string) => `/my-competition/${encodeURIComponent(id)}`,
 } as const
+

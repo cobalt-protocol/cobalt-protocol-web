@@ -229,12 +229,12 @@ export function CreateTeamForm({
       </section>
       <div className="mt-6 flex items-center gap-3 rounded-xl bg-blue-50 p-4">
         <span className="flex size-9 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-          {profile.username.slice(0, 2).toUpperCase()}
+          {(profile.username?.trim() || "builder").slice(0, 2).toUpperCase()}
         </span>
         <div>
-          <strong className="text-sm">@{profile.username}</strong>
+          <strong className="text-sm">@{profile.username?.trim() || "builder"}</strong>
           <p className="mt-1 text-xs text-muted-foreground">
-            {profile.institution}
+            {profile.institution?.trim() || "Independent Builder"}
           </p>
         </div>
         <span className="ml-auto rounded-full bg-white px-3 py-1 text-xs font-bold">

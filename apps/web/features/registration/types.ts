@@ -1,3 +1,4 @@
+import type { BuilderProfile } from "@/features/profile/types"
 import type { Competition } from "@/features/competitions/types"
 import type { ApiTeam } from "@/lib/competitions-api"
 export type RegistrationCompetition = Pick<
@@ -5,9 +6,9 @@ export type RegistrationCompetition = Pick<
   "id" | "slug" | "title" | "maxTeamSize"
 >
 export type RegistrationDialog =
-  | { kind: "wallet"; competition: RegistrationCompetition | null }
-  | { kind: "profile"; competition: RegistrationCompetition | null }
-  | { kind: "choice" | "create"; competition: RegistrationCompetition }
+  | { kind: "wallet"; competition: RegistrationCompetition | null; profileOverride?: BuilderProfile | null }
+  | { kind: "profile"; competition: RegistrationCompetition | null; profileOverride?: BuilderProfile | null }
+  | { kind: "choice" | "create"; competition: RegistrationCompetition; profileOverride?: BuilderProfile | null }
   | null
 export interface PreviewMembership {
   competitionId?: string

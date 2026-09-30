@@ -1,6 +1,13 @@
+"use client"
 import { FileBadge, LockKeyhole } from "lucide-react"
 import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
+import { useSiteActions } from "@/components/layout/site-actions"
+
 export function WorkspaceAnnouncements() {
+  const { connected } = useSiteActions()
+
+  if (!connected) return null
+
   return (
     <Panel>
       <SectionHeading
@@ -52,3 +59,4 @@ export function WorkspaceAnnouncements() {
     </Panel>
   )
 }
+

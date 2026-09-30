@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
 import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseEther, parseUnits, getAddress } from 'viem';
@@ -13,7 +14,7 @@ import {
     SelectValue,
 } from '@workspace/ui/components/select';
 import { DateTimePicker } from '@/components/ui/date-picker';
-import { fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, type ApiListingTokenPrize } from '@/lib/competitions-api';
+import { fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, fetchApiMe, getStoredToken, type ApiListingTokenPrize } from '@/lib/competitions-api';
 import { TOKENS } from '@/lib/tokens';
 
 // --- KUMPULAN IKON SVG ---
@@ -257,6 +258,28 @@ async function uploadToKuboIPFS(file: File): Promise<string> {
 export default function CreateCompetition() {
     const publicClient = usePublicClient();
     const { address, isConnected, chain } = useAccount();
+    const [storedToken, setStoredToken] = useState<string | null>(null);
+    const [hasCheckedToken, setHasCheckedToken] = useState(false);
+
+    useEffect(() => {
+        setStoredToken(getStoredToken());
+        setHasCheckedToken(true);
+    }, []);
+
+    const { data: meUser, isLoading: isLoadingMe } = useQuery({
+        queryKey: ["user-me", storedToken],
+        queryFn: () => fetchApiMe(storedToken || getStoredToken()),
+        enabled: Boolean(storedToken),
+    });
+
+    const isOrganizationRole = Boolean(
+        isConnected &&
+        storedToken &&
+        (meUser?.role === "organization" || meUser?.role === "organizer")
+    );
+
+    const isChecking = !hasCheckedToken || (Boolean(storedToken) && isLoadingMe);
+
     const { writeContractAsync, data: txHash, isPending: isWritePending, error: writeError } = useWriteContract();
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 

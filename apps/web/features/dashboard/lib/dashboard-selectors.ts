@@ -2,6 +2,7 @@ import type { Competition } from "@/features/competitions/types"
 import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors"
 import { TOKENS } from "@/lib/tokens"
 import type { PreviewMembership } from "@/features/registration/types"
+import type { ApiUserDashboardData } from "@/lib/competitions-api"
 import {
   dashboardPhases,
   type DashboardCompetition,
@@ -27,9 +28,91 @@ export const phaseBadges: Record<DashboardPhase, string> = {
 export function mergeDashboardCompetitions(
   fixtures: readonly DashboardCompetition[],
   memberships: readonly PreviewMembership[],
-  competitions: readonly Competition[]
+  competitions: readonly Competition[],
+  dashboardData?: ApiUserDashboardData | null
 ): DashboardCompetition[] {
   const entries = fixtures.map((entry) => ({ ...entry }))
+
+  if (dashboardData) {
+    for (const m of dashboardData.memberships || []) {
+      const competition = competitions.find(
+        (item) =>
+          item.slug === m.competition.slug ||
+          item.id === m.competition.id
+      )
+      const competitionSlug = m.competition.slug || competition?.slug || null
+      const title = m.competition.title || competition?.title || m.teamName || "Untitled Competition"
+      const category = m.competition.category || competition?.tag || "Hackathon"
+
+      let phase: DashboardPhase = "registration"
+      const now = new Date()
+      const subDead = m.competition.submissionDeadline ? new Date(m.competition.submissionDeadline) : null
+      if (subDead && now >= subDead) {
+        phase = "closed"
+      } else if (competition?.status === "completed") {
+        phase = "closed"
+      }
+
+      const local: DashboardCompetition = {
+        id: m.teamId,
+        txHash: competition?.txHash || null,
+        tx_hash: competition?.txHash || null,
+        competitionSlug,
+        title,
+        category,
+        phase,
+        organizer: competition?.organizer || "Cobalt Protocol",
+        teamName: m.teamName,
+        memberCount: m.memberCount,
+        amountUsd: competition ? getPrizeTotal(competition) : 0,
+        currency: competition?.currency || TOKENS.USDT.symbol,
+        poolLabel: "Contract Escrow Pool",
+        actionLabel: "Open Workspace",
+        source: "local",
+        pending: false,
+      }
+
+      const index = entries.findIndex(
+        (item) => item.competitionSlug === competitionSlug || item.id === local.id
+      )
+      if (index >= 0) entries[index] = local
+      else entries.push(local)
+    }
+
+    for (const req of dashboardData.pendingRequests || []) {
+      const competition = competitions.find(
+        (item) => item.slug === req.competitionSlug
+      )
+      const competitionSlug = req.competitionSlug || competition?.slug || null
+      const title = req.competitionTitle || competition?.title || "Untitled Competition"
+
+      const local: DashboardCompetition = {
+        id: `pending-${req.requestId}`,
+        txHash: competition?.txHash || null,
+        tx_hash: competition?.txHash || null,
+        competitionSlug,
+        title,
+        category: competition?.tag || "Hackathon",
+        phase: "registration",
+        organizer: competition?.organizer || "Cobalt Protocol",
+        teamName: req.teamName,
+        memberCount: null,
+        amountUsd: competition ? getPrizeTotal(competition) : 0,
+        currency: competition?.currency || TOKENS.USDT.symbol,
+        poolLabel: "Contract Escrow Pool",
+        actionLabel: "View Competition",
+        source: "local",
+        pending: true,
+      }
+
+      const index = entries.findIndex(
+        (item) => item.competitionSlug === competitionSlug || item.id === local.id
+      )
+      if (index >= 0) entries[index] = local
+      else entries.push(local)
+    }
+  }
+
   for (const membership of memberships) {
     const competition = competitions.find(
       (item) =>

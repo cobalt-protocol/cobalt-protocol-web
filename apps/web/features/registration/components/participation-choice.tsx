@@ -25,7 +25,9 @@ export function ParticipationChoice({
         Choose your participation path for{" "}
         <strong className="text-foreground">{competition.title}</strong>.
       </p>
-      <p className="mt-3 text-xs text-teal-700">Joining as @{username}</p>
+      <p className="mt-3 text-xs text-teal-700">
+        Joining as @{username?.trim() || "builder"}
+      </p>
       <div className="mt-7 grid gap-5 sm:grid-cols-2">
         {[
           {

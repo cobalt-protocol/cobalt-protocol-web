@@ -1,5 +1,17 @@
 export type UserRole = "organization" | "user"
 
+export interface Organization {
+  id: string
+  tx_hash?: string | null
+  name: string
+  description?: string | null
+  avatar_url?: string | null
+  user_id: string
+  created_at?: string
+  updated_at?: string | null
+  deleted_at?: string | null
+}
+
 export interface User {
   id: string
   wallet_address: string
@@ -23,6 +35,7 @@ export interface User {
     description?: string | null
   } | null
   skills?: Array<{ name?: string; skill_name?: string; level?: string }>
+  organization?: Organization | null
 }
 
 export interface NonceData {

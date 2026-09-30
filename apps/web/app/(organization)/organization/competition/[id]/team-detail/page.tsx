@@ -1,4 +1,10 @@
-import React from 'react';
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import { useAccount } from 'wagmi';
+import { useQuery } from '@tanstack/react-query';
+import { fetchApiMe, getStoredToken } from '@/lib/competitions-api';
 import {
     ChevronRight,
     FileText,
@@ -6,6 +12,7 @@ import {
     ExternalLink,
     Eye,
     CheckCircle2,
+    Loader2,
 } from 'lucide-react';
 import { Button } from "@workspace/ui/components/button";
 import { Badge } from "@workspace/ui/components/badge";
@@ -20,6 +27,46 @@ const AvatarInitials = ({ initials, bgClass = "bg-blue-100", textClass = "text-b
 );
 
 export default function TeamDetail() {
+    const router = useRouter();
+    const params = useParams();
+    const compId = (params?.id as string) || '';
+    const { isConnected } = useAccount();
+    const [storedToken, setStoredToken] = useState<string | null>(null);
+    const [hasCheckedToken, setHasCheckedToken] = useState(false);
+
+    useEffect(() => {
+        setStoredToken(getStoredToken());
+        setHasCheckedToken(true);
+    }, []);
+
+    const { data: meUser, isLoading: isLoadingMe } = useQuery({
+        queryKey: ["user-me", storedToken],
+        queryFn: () => fetchApiMe(storedToken || getStoredToken()),
+        enabled: Boolean(storedToken),
+    });
+
+    const isOrganizationRole = Boolean(
+        isConnected &&
+        storedToken &&
+        (meUser?.role === "organization" || meUser?.role === "organizer")
+    );
+
+    const isChecking = !hasCheckedToken || (Boolean(storedToken) && isLoadingMe);
+
+    useEffect(() => {
+        if (!isChecking && !isOrganizationRole) {
+            router.replace(compId ? `/organization/competition/${compId}` : '/organization/competition');
+        }
+    }, [isChecking, isOrganizationRole, compId, router]);
+
+    if (isChecking || !isOrganizationRole) {
+        return (
+            <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-6 text-slate-500">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mr-2" />
+                <span>{!isOrganizationRole && !isChecking ? "Redirecting..." : "Loading team details..."}</span>
+            </div>
+        );
+    }
     return (
         <div className="min-h-screen bg-slate-50/50 p-6 md:p-10 font-sans text-slate-900">
             <div className="max-w-6xl mx-auto space-y-6">

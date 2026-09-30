@@ -1,7 +1,8 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen,
   ChevronRight,
@@ -24,69 +25,47 @@ import {
   TableHeader,
   TableRow,
 } from "@workspace/ui/components/table";
-import type { ApiCompetition } from '@/lib/competitions-api';
+import {
+  fetchAllTeamsByCompetitionId,
+  getStoredToken,
+  type ApiCompetition,
+  type ApiTeam,
+} from '@/lib/competitions-api';
 import type { Competition } from '../types';
 
-const teamsData = [
-  {
-    id: 1,
-    initials: "SS",
-    name: "Team SwarmSynthetix",
-    members: "Alex Rivera, Sarah Chen, Marcus Zhao, Elena Vance",
-    size: 4,
-    status: "Submitted",
-  },
-  {
-    id: 2,
-    initials: "AZ",
-    name: "AgentZero Labs",
-    members: "Daniyal Kim, Sophie Tremblay, Leo Sterling",
-    size: 3,
-    status: "Submitted",
-  },
-  {
-    id: 3,
-    initials: "NV",
-    name: "Nexus Vector",
-    members: "Priya Sharma, Liam O'Connor, Mateo Santos, Aoi Tanai",
-    size: 5,
-    status: "Submitted",
-  },
-  {
-    id: 4,
-    initials: "CM",
-    name: "Cognitive Mesh",
-    members: "Kavita Reddy, Jordan Miller, Carlos Reyes, Ananya Gupta",
-    size: 4,
-    status: "Under Review",
-  },
-  {
-    id: 5,
-    initials: "DA",
-    name: "DeFi Autonomous Ops",
-    members: "Henrik Lindqvist, Maya Lin, Ethan Brooks",
-    size: 3,
-    status: "Incomplete",
-  },
-];
+function getTeamInitials(name: string): string {
+  if (!name) return "TM";
+  const words = name.trim().split(/\s+/);
+  if (words.length >= 2 && words[0]?.[0] && words[1]?.[0]) {
+    return (words[0][0] + words[1][0]).toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
 
-const StatusBadge = ({ status }: { status: string }) => {
+const StatusBadge = ({ status, visibility }: { status?: string; visibility?: boolean }) => {
+  const isPrivate = visibility === false;
+  const label = status || (isPrivate ? "Private" : "Public");
+
   const styles: Record<string, string> = {
     Submitted: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
     "Under Review": "bg-blue-50 text-blue-700 hover:bg-blue-50",
     Incomplete: "bg-red-50 text-red-700 hover:bg-red-50",
+    Public: "bg-emerald-50 text-emerald-700 hover:bg-emerald-50",
+    Private: "bg-purple-50 text-purple-700 hover:bg-purple-50",
   };
 
   const dotColors: Record<string, string> = {
     Submitted: "bg-emerald-500",
     "Under Review": "bg-blue-500",
     Incomplete: "bg-red-500",
+    Public: "bg-emerald-500",
+    Private: "bg-purple-500",
   };
 
   return (
-    <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[status] || styles["Under Review"]}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dotColors[status] || dotColors["Under Review"]}`} />
-      {status}
+    <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[label] || styles["Public"]}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColors[label] || dotColors["Public"]}`} />
+      {label}
     </Badge>
   );
 };
@@ -122,6 +101,53 @@ export function OrganizationCompetitionDetailView({
   guidebookUrl,
 }: OrganizationViewProps) {
   const [searchQuery, setSearchQuery] = useState("");
+  const [storedToken, setStoredToken] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStoredToken(getStoredToken());
+  }, []);
+
+  const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
+    queryKey: ["all-competition-teams", id, storedToken],
+    queryFn: () => (id ? fetchAllTeamsByCompetitionId(id, storedToken || getStoredToken()) : []),
+    enabled: Boolean(id),
+  });
+
+  const formattedTeams = useMemo(() => {
+    if (!apiTeams || apiTeams.length === 0) {
+      return [];
+    }
+    return apiTeams.map((team) => {
+      const membersStr =
+        team.team_roles && team.team_roles.length > 0
+          ? team.team_roles
+              .map((r) => {
+                const u = r.user;
+                if (!u) return "Member";
+                return (
+                  u.username ||
+                  u.email ||
+                  (u.wallet_address
+                    ? `${u.wallet_address.slice(0, 6)}...${u.wallet_address.slice(-4)}`
+                    : "Member")
+                );
+              })
+              .join(", ")
+          : "No members listed";
+
+      const initials = getTeamInitials(team.name);
+
+      return {
+        id: team.id,
+        initials,
+        name: team.name,
+        members: membersStr,
+        size: team.team_roles?.length || 1,
+        visibility: team.visibility,
+        status: team.visibility ? "Public" : "Private",
+      };
+    });
+  }, [apiTeams]);
 
   const title = apiCompetition?.name || effectiveCompetition?.title || "Autonomous Agents Global Hackathon 2025";
   const rawTxHash = apiCompetition?.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
@@ -142,7 +168,7 @@ export function OrganizationCompetitionDetailView({
   const competitionContractUrl = `${explorerBaseUrl}/address/${competitionContractAddress}`;
   const treasuryPrizeContractUrl = `${explorerBaseUrl}/address/${treasuryPrizeContractAddress}`;
 
-  const filteredTeams = teamsData.filter(
+  const filteredTeams = formattedTeams.filter(
     (team) =>
       team.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       team.members.toLowerCase().includes(searchQuery.toLowerCase())
@@ -156,7 +182,7 @@ export function OrganizationCompetitionDetailView({
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
           <div>
             <div className="flex items-center text-sm text-slate-500 mb-2">
-              <Link href="/organization" className="hover:underline">Dashboard</Link>
+              <Link href="/organization/competition" className="hover:underline">Dashboard</Link>
               <ChevronRight className="w-4 h-4 mx-1" />
               <span className="text-blue-600 font-medium">Competition Detail</span>
             </div>
@@ -215,7 +241,7 @@ export function OrganizationCompetitionDetailView({
                     </Button>
                   )}
                   {isOwner && (
-                    <Link href={`/competition/${id}/winner`}>
+                    <Link href={`/organization/competition/${id}/winner`}>
                       <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium">
                         <Trophy className="w-4 h-4 mr-2" />
                         Determine Winner
@@ -320,37 +346,50 @@ export function OrganizationCompetitionDetailView({
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredTeams.map((team) => (
-                <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
-                  <TableCell className="py-4 pl-6">
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
-                        {team.initials}
-                      </div>
-                      <span className="font-semibold text-slate-800">{team.name}</span>
-                    </div>
-                  </TableCell>
-                  <TableCell className="py-4 text-slate-500 text-sm">
-                    {team.members}
-                  </TableCell>
-                  <TableCell className="py-4 text-center">
-                    <Badge variant="secondary" className="bg-slate-100 text-slate-600 hover:bg-slate-100 font-medium px-2.5 py-0.5 rounded-full">
-                      {team.size} members
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="py-4 text-right pr-6">
-                    <div className="flex justify-end">
-                      <StatusBadge status={team.status} />
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {filteredTeams.length === 0 && (
+              {isLoadingTeams ? (
                 <TableRow>
                   <TableCell colSpan={4} className="py-8 text-center text-slate-500 text-sm">
-                    No teams found matching &quot;{searchQuery}&quot;
+                    <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600 mb-2" />
+                    Loading participating teams...
                   </TableCell>
                 </TableRow>
+              ) : (
+                <>
+                  {filteredTeams.map((team) => (
+                    <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
+                      <TableCell className="py-4 pl-6">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
+                            {team.initials}
+                          </div>
+                          <span className="font-semibold text-slate-800">{team.name}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-slate-500 text-sm">
+                        {team.members}
+                      </TableCell>
+                      <TableCell className="py-4 text-center">
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-600 hover:bg-slate-100 font-medium px-2.5 py-0.5 rounded-full">
+                          {team.size} members
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="py-4 text-right pr-6">
+                        <div className="flex justify-end">
+                          <StatusBadge status={team.status} visibility={team.visibility} />
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                  {filteredTeams.length === 0 && (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-8 text-center text-slate-500 text-sm">
+                        {searchQuery
+                          ? `No teams found matching "${searchQuery}"`
+                          : "No teams found for this competition"}
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </>
               )}
             </TableBody>
           </Table>

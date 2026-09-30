@@ -10,7 +10,12 @@ const NavBar = () => {
         connected,
         isWrongNetwork,
         switchNetwork,
+        isSigningNonce,
+        isGeneratingNonce,
+        isVerifyingSignature,
     } = useSiteActions()
+
+    const isPendingAuth = Boolean(isSigningNonce || isGeneratingNonce || isVerifyingSignature)
 
     return (
         <>
@@ -22,6 +27,8 @@ const NavBar = () => {
                         alt="Logo"
                         width={300}
                         height={75}
+                        priority
+                        loading="eager"
                         style={{ height: "auto", width: "auto" }}
                         className="w-[300px] object-contain"
                     />
@@ -42,9 +49,10 @@ const NavBar = () => {
                     <button
                         type="button"
                         onClick={openWallet}
-                        className="bg-[#2563EB] text-white text-sm hover:opacity-90 active:scale-95 transition-all px-6 h-11 rounded-md font-medium"
+                        disabled={isPendingAuth}
+                        className="bg-[#2563EB] text-white text-sm hover:opacity-90 active:scale-95 transition-all px-6 h-11 rounded-md font-medium disabled:opacity-50"
                     >
-                        Connect Wallet
+                        {isPendingAuth ? "Signing..." : "Connect Wallet"}
                     </button>
                 )}
             </nav>

@@ -1,6 +1,7 @@
 "use client"
 import Link from "next/link"
 import Image from "next/image"
+import { useState, useEffect } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { routes } from "@/lib/routes"
 import { useSiteActions } from "./site-actions"
@@ -17,6 +18,8 @@ export function Brand() {
         alt="Cobalt Protocol logo"
         width={200}
         height={50}
+        priority
+        loading="eager"
         style={{ height: "auto", width: "auto" }}
         className="w-[200px] object-contain"
       />
@@ -24,12 +27,24 @@ export function Brand() {
   )
 }
 export function SiteHeader() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const {
     openWallet,
     connected,
     isWrongNetwork,
     switchNetwork,
+    isSigningNonce,
+    isGeneratingNonce,
+    isVerifyingSignature,
   } = useSiteActions()
+
+  const isConnected = mounted && connected
+  const isWrong = mounted && isWrongNetwork
+  const isPendingAuth = mounted && Boolean(isSigningNonce || isGeneratingNonce || isVerifyingSignature)
 
   return (
     <header className="sticky top-0 z-50 border-b border-border/30 bg-white/95 backdrop-blur-md transition-all">
@@ -39,7 +54,7 @@ export function SiteHeader() {
           aria-label="Main navigation"
           className="flex items-center gap-3 sm:gap-5"
         >
-          {isWrongNetwork ? (
+          {isWrong ? (
             <Button
               variant="destructive"
               className="h-9 px-3 text-xs sm:text-sm"
@@ -47,15 +62,16 @@ export function SiteHeader() {
             >
               Switch to BotChain Testnet
             </Button>
-          ) : connected ? (
+          ) : isConnected ? (
             <AccountMenu />
           ) : (
             <Button
               variant="default"
               className="h-9 px-3 text-xs sm:text-sm"
               onClick={openWallet}
+              disabled={isPendingAuth}
             >
-              Connect Wallet
+              {isPendingAuth ? "Signing..." : "Connect Wallet"}
             </Button>
           )}
         </nav>

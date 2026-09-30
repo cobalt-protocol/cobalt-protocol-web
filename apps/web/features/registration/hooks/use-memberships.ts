@@ -1,9 +1,11 @@
 "use client"
 import { useCallback, useEffect, useState } from "react"
+import { usePathname } from "next/navigation"
 import { fetchMyTeams, type ApiTeam } from "@/lib/competitions-api"
 import type { PreviewMembership } from "../types"
 
 export function useMemberships() {
+  const pathname = usePathname()
   const [memberships, setMemberships] = useState<PreviewMembership[]>([])
   const [ready, setReady] = useState(false)
 
@@ -14,6 +16,12 @@ export function useMemberships() {
       } catch {
         // Ignore storage removal error
       }
+    }
+
+    if (pathname?.startsWith("/organization")) {
+      setMemberships([])
+      setReady(true)
+      return
     }
 
     const token =
@@ -65,9 +73,15 @@ export function useMemberships() {
     } finally {
       setReady(true)
     }
-  }, [])
+  }, [pathname])
 
   useEffect(() => {
+    if (pathname?.startsWith("/organization")) {
+      setMemberships([])
+      setReady(true)
+      return
+    }
+
     reloadMemberships()
 
     const handleReload = () => {
@@ -87,7 +101,7 @@ export function useMemberships() {
         window.removeEventListener("cobalt:auth_change", handleReload)
       }
     }
-  }, [reloadMemberships])
+  }, [reloadMemberships, pathname])
 
   function addMembership(membership: PreviewMembership): boolean {
     setMemberships((prev) => {

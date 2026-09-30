@@ -2,7 +2,7 @@
 import { Modal } from "@/components/ui/modal"
 import { primaryLinkClass } from "@/components/ui/page-primitives"
 import type { Competition } from "@/features/competitions/types"
-import { fetchCompetitions } from "@/lib/competitions-api"
+import { fetchCompetitions, fetchUserDashboard, getStoredToken } from "@/lib/competitions-api"
 import { useQuery } from "@tanstack/react-query"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import { useSiteActions } from "@/components/layout/site-actions"
@@ -12,7 +12,7 @@ import { Button } from "@workspace/ui/components/button"
 import { CirclePlus, Search } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   dashboardProfile,
 } from "../data/dashboard-fixtures"
@@ -46,10 +46,34 @@ export function ParticipantDashboard({
   const [phase, setPhase] = useState<DashboardFilter>("all")
   const [query, setQuery] = useState("")
   const [selected, setSelected] = useState<DashboardCompetition | null>(null)
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    setStoredToken(getStoredToken())
+    const handleAuth = () => setStoredToken(getStoredToken())
+    if (typeof window !== "undefined") {
+      window.addEventListener("cobalt:auth_change", handleAuth)
+      window.addEventListener("storage", handleAuth)
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.removeEventListener("cobalt:auth_change", handleAuth)
+        window.removeEventListener("storage", handleAuth)
+      }
+    }
+  }, [])
+
+  const { data: dashboardData } = useQuery({
+    queryKey: ["user-dashboard", storedToken],
+    queryFn: () => fetchUserDashboard(storedToken),
+    enabled: Boolean(storedToken),
+  })
+
   const entries = mergeDashboardCompetitions(
     [],
     memberships,
-    competitions
+    competitions,
+    dashboardData
   )
   const counts = getDashboardCounts(entries)
   const stats = getDashboardStats(entries)

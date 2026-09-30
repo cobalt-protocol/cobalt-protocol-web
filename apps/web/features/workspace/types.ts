@@ -15,6 +15,9 @@ export interface JoinRequest {
 }
 export interface TeamState {
   name: string
+  description?: string
+  visibility?: boolean
+  skills?: readonly string[]
   members: readonly TeamMember[]
   requests: readonly JoinRequest[]
 }
@@ -25,6 +28,14 @@ export interface SubmissionDraft {
 }
 export type TeamAction =
   | { type: "rename"; name: string }
+  | {
+      type: "update-details"
+      name: string
+      description?: string
+      visibility?: boolean
+      skills?: readonly string[]
+    }
   | { type: "remove-member"; memberId: string }
   | { type: "decline-request"; requestId: string }
   | { type: "accept-request"; requestId: string; capacity: number }
+  | { type: "set-team"; team: TeamState }

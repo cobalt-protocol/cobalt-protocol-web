@@ -1,8 +1,9 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import Link from "next/link"
-import { ArrowRight, KeyRound, RefreshCw, Search, Sparkles } from "lucide-react"
+import { ArrowRight, KeyRound, Loader2, RefreshCw, Search, Sparkles } from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
 import {
   Breadcrumbs,
@@ -15,9 +16,14 @@ import { useSiteActions } from "@/components/layout/site-actions"
 import type { Competition } from "@/features/competitions/types"
 import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
+import {
+  acceptTeamInviteByCode,
+  fetchTeamsByCompetitionId,
+  parseCapacityFromFormation,
+  requestJoinTeam,
+} from "@/lib/competitions-api"
 import { formatMoney } from "@/lib/format"
 import { routes } from "@/lib/routes"
-import { previewInviteCode, privateTeam, publicTeams } from "../data/teams"
 import {
   recommendTeams,
   searchTeams,
@@ -35,38 +41,113 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
   const [error, setError] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState<string[]>([])
   const [refreshOffset, setRefreshOffset] = useState(0)
+  const [submittingTeamId, setSubmittingTeamId] = useState<string | null>(null)
+  const [isSubmittingCode, setIsSubmittingCode] = useState(false)
+
+  // Fetch teams from NestJS API endpoint GET /api/v1/teams/competition/:competitionId
+  const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
+    queryKey: ["competition-teams", competition.id],
+    queryFn: () => fetchTeamsByCompetitionId(competition.id),
+    enabled: Boolean(competition.id),
+  })
+
+  const mappedApiTeams: TeamListing[] = useMemo(() => {
+    if (!apiTeams || apiTeams.length === 0) return []
+    return apiTeams
+      .filter((item) => item.visibility !== false)
+      .map((item, idx) => {
+        const leadRole = item.team_roles?.find((r) => r.role === "LEAD" || r.role === "lead" || r.role === "LEADER")
+        const leadUser = leadRole?.user
+        const leadName =
+          leadUser?.username ||
+          (leadUser?.wallet_address
+            ? `${leadUser.wallet_address.slice(0, 6)}...${leadUser.wallet_address.slice(-4)}`
+            : item.user_id
+              ? `User ${item.user_id.slice(-6)}`
+              : "Squad Lead")
+
+        const skills =
+          item.skills_suggestions && item.skills_suggestions.length > 0
+            ? item.skills_suggestions.map((s) => s.name)
+            : ["Fullstack Developer", "Smart Contract Dev"]
+
+        return {
+          id: item.id,
+          name: item.name,
+          lead: leadName,
+          memberCount: item.team_roles?.length || 1,
+          description: item.description || "No description provided.",
+          roles: skills,
+          matchScore: Math.max(75, 98 - idx * 3),
+        }
+      })
+  }, [apiTeams])
+
   const membership = memberships.find(
     (item) => item.competitionSlug === competition.slug
   )
-  const available = publicTeams.filter(
-    (team) => team.memberCount < competition.maxTeamSize
-  )
-  const filtered = searchTeams(available, query)
+
+  const capacity = useMemo(() => {
+    return competition.formation
+      ? parseCapacityFromFormation(competition.formation, competition.maxTeamSize)
+      : competition.maxTeamSize
+  }, [competition.formation, competition.maxTeamSize])
+
+  const available = useMemo(() => {
+    return mappedApiTeams.filter(
+      (team) => team.memberCount < capacity
+    )
+  }, [mappedApiTeams, capacity])
+  const filtered = searchTeams(mappedApiTeams, query)
   const pages = Math.max(1, Math.ceil(filtered.length / teamsPerPage))
   const currentPage = Math.min(page, pages)
   const start = (currentPage - 1) * teamsPerPage
   const recommendations = recommendTeams(available, discarded, refreshOffset)
   const disabled = !ready || Boolean(membership)
 
-  function requestTeam(team: TeamListing, inviteCode: string | null = null) {
+  async function requestTeam(team: TeamListing, inviteCode: string | null = null) {
     if (disabled) return
-    if (team.memberCount >= competition.maxTeamSize) {
+    if (team.memberCount >= capacity) {
       setError("This team is full.")
       return
     }
-    setError(
-      joinTeam({
-        competitionSlug: competition.slug,
-        teamId: team.id,
-        teamName: team.name,
-        visibility: inviteCode ? "private" : "public",
-        requirements: team.roles.join(", "),
-        ownerUsername: team.lead,
-        role: "member",
-        status: inviteCode ? "active" : "pending",
-        inviteCode,
-      })
-    )
+
+    setError(null)
+    setSubmittingTeamId(team.id)
+
+    try {
+      if (inviteCode) {
+        await acceptTeamInviteByCode(inviteCode, team.id)
+        joinTeam({
+          competitionSlug: competition.slug,
+          teamId: team.id,
+          teamName: team.name,
+          visibility: "private",
+          requirements: team.roles.join(", "),
+          ownerUsername: team.lead,
+          role: "member",
+          status: "active",
+          inviteCode,
+        })
+      } else {
+        await requestJoinTeam(team.id)
+        joinTeam({
+          competitionSlug: competition.slug,
+          teamId: team.id,
+          teamName: team.name,
+          visibility: "public",
+          requirements: team.roles.join(", "),
+          ownerUsername: team.lead,
+          role: "member",
+          status: "pending",
+          inviteCode: null,
+        })
+      }
+    } catch (err: any) {
+      setError(err?.message || "Failed to send join request. Please ensure you are logged in.")
+    } finally {
+      setSubmittingTeamId(null)
+    }
   }
 
   return (
@@ -133,16 +214,74 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
         </div>
         <form
           className="flex w-full flex-wrap gap-3 md:w-auto"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault()
             const normalized = code.trim().toUpperCase()
-            if (![previewInviteCode, "COBALT-DEMO"].includes(normalized)) {
-              setError(
-                "Team code not found. Try the preview code SWARM-2025-X8K."
+            if (!normalized) return
+
+            setError(null)
+            setIsSubmittingCode(true)
+
+            try {
+              const matchedApiTeam = apiTeams.find((t) =>
+                t.team_codes?.some((c) => c.code.toUpperCase() === normalized)
               )
-              return
+
+              if (matchedApiTeam) {
+                const leadRole = matchedApiTeam.team_roles?.find(
+                  (r) => r.role === "LEAD" || r.role === "lead" || r.role === "LEADER"
+                )
+                const leadUser = leadRole?.user
+                const leadName =
+                  leadUser?.username ||
+                  (leadUser?.wallet_address
+                    ? `${leadUser.wallet_address.slice(0, 6)}...${leadUser.wallet_address.slice(-4)}`
+                    : matchedApiTeam.user_id
+                      ? `User ${matchedApiTeam.user_id.slice(-6)}`
+                      : "Squad Lead")
+                const skills =
+                  matchedApiTeam.skills_suggestions &&
+                  matchedApiTeam.skills_suggestions.length > 0
+                    ? matchedApiTeam.skills_suggestions.map((s) => s.name)
+                    : ["Fullstack Developer"]
+
+                await requestTeam(
+                  {
+                    id: matchedApiTeam.id,
+                    name: matchedApiTeam.name,
+                    lead: leadName,
+                    memberCount: matchedApiTeam.team_roles?.length || 1,
+                    description: matchedApiTeam.description || "Private Team",
+                    roles: skills,
+                    matchScore: 95,
+                  },
+                  normalized
+                )
+                return
+              }
+
+              // Direct API call by reference code
+              const res = await acceptTeamInviteByCode(normalized)
+              const joinedTeam = res?.data?.team || res?.data
+              joinTeam({
+                competitionSlug: competition.slug,
+                teamId: joinedTeam?.team_id || joinedTeam?.id || "joined-team",
+                teamName: joinedTeam?.name || "Joined Team",
+                visibility: "private",
+                requirements: "",
+                ownerUsername: "Leader",
+                role: "member",
+                status: "active",
+                inviteCode: normalized,
+              })
+            } catch (err: any) {
+              setError(
+                err?.message ||
+                  `Team code "${code.trim()}" not found or invalid.`
+              )
+            } finally {
+              setIsSubmittingCode(false)
             }
-            requestTeam(privateTeam, normalized)
           }}
         >
           <label className="sr-only" htmlFor="team-code">
@@ -153,12 +292,21 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
             required
             value={code}
             onChange={(event) => setCode(event.target.value)}
-            placeholder={`e.g. ${previewInviteCode}`}
+            placeholder="e.g. TEAM-INVITE-CODE"
             className={`${fieldClass} min-w-0 flex-1 md:w-64`}
           />
-          <Button type="submit" disabled={disabled} className="h-11">
-            Join Team
-            <ArrowRight size={16} />
+          <Button type="submit" disabled={disabled || isSubmittingCode} className="h-11">
+            {isSubmittingCode ? (
+              <>
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                Joining...
+              </>
+            ) : (
+              <>
+                Join Team
+                <ArrowRight size={16} />
+              </>
+            )}
           </Button>
         </form>
       </Panel>
@@ -209,8 +357,9 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
             <TeamCard
               key={team.id}
               team={team}
-              capacity={competition.maxTeamSize}
+              capacity={capacity}
               disabled={disabled}
+              isSubmitting={submittingTeamId === team.id}
               onRequest={() => requestTeam(team)}
               onDiscard={() => setDiscarded((current) => [...current, team.id])}
               onRefresh={() => setDiscarded((current) => [...current, team.id])}
@@ -225,8 +374,11 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
       </Panel>
       <Panel className="mb-4 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold">
-            Public Teams <Badge>{available.length} Available</Badge>
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            Public Teams <Badge>{filtered.length} teams</Badge>
+            {isLoadingTeams && (
+              <Loader2 className="h-4 w-4 animate-spin text-primary ml-1" />
+            )}
           </h2>
           <p className="mt-1 text-xs text-muted-foreground">
             Explore active squads looking for complementary skill sets.
@@ -257,8 +409,9 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           <TeamCard
             key={team.id}
             team={team}
-            capacity={competition.maxTeamSize}
+            capacity={capacity}
             disabled={disabled}
+            isSubmitting={submittingTeamId === team.id}
             onRequest={() => requestTeam(team)}
           />
         ))}
@@ -266,7 +419,11 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
       {!filtered.length && (
         <Panel>
           <p className="text-center text-sm text-muted-foreground">
-            No teams match your search. Try another name or skill.
+            {isLoadingTeams
+              ? "Loading public teams..."
+              : query.trim()
+                ? "No teams match your search. Try another name or skill."
+                : "No public teams available yet for this competition."}
           </p>
         </Panel>
       )}
@@ -312,10 +469,6 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           </Button>
         </nav>
       </div>
-      <p className="mt-4 text-xs text-muted-foreground">
-        Preview data · Recommendations and team requests are simulated. Private
-        team demo code: {previewInviteCode}.
-      </p>
     </PageContainer>
   )
 }

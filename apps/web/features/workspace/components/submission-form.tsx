@@ -17,6 +17,7 @@ import {
   validateSubmissionFile,
 } from "../lib/submission-validation"
 import type { SubmissionDraft } from "../types"
+import { useSiteActions } from "@/components/layout/site-actions"
 function SubmissionEditor({
   initialDraft,
   onSave,
@@ -178,11 +179,15 @@ function SubmissionEditor({
   )
 }
 export function SubmissionForm({ competitionId }: { competitionId: string }) {
+  const { connected } = useSiteActions()
   const { value, save, ready } = useBrowserDraft(
     `cobalt:submission:${competitionId}:v1`,
     emptySubmission,
     isSubmissionDraft
   )
+
+  if (!connected) return null
+
   return (
     <Panel>
       <SectionHeading

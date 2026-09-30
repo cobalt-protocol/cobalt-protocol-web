@@ -13,6 +13,8 @@ export async function getCompetitions(): Promise<readonly Competition[]> {
 export async function getCompetitionById(
   id: string
 ): Promise<Competition | undefined> {
+  if (!id) return undefined
+
   // 1. Direct fetch from NestJS API endpoint GET /api/v1/competitions/:id
   const directComp = await fetchCompetitionById(id)
   if (directComp) {
@@ -32,9 +34,9 @@ export async function getCompetitionById(
   )
   if (exactMatch) return exactMatch
 
-  // 4. Fallback exact case-insensitive match
+  // 4. Fallback exact case-insensitive match (by ID or slug)
   const idLower = id.toLowerCase()
-  return competitions.find((c) => c.slug.toLowerCase() === idLower)
+  return competitions.find((c) => c.id.toLowerCase() === idLower || c.slug.toLowerCase() === idLower)
 }
 
 export async function getCompetitionBySlug(

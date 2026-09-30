@@ -23,15 +23,19 @@ if (typeof window !== "undefined") {
     }
   } catch (_) {}
 
-  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout, MetaMask session restore)
+  // Global trap for browser wallet extension unhandled promise rejections (e.g., Aave Account SDK, EIP1193 connection timeout, MetaMask session restore, Wagmi ProviderNotFoundError)
   window.addEventListener("unhandledrejection", (event) => {
     const reason = event.reason
     const message = reason?.message || String(reason || "")
     const stack = reason?.stack || ""
-    const fullStr = `${message} ${stack} ${String(reason)}`
+    const name = reason?.name || ""
+    const fullStr = `${name} ${message} ${stack} ${String(reason)}`
     if (
+      fullStr.includes("ProviderNotFoundError") ||
+      fullStr.includes("Provider not found") ||
       fullStr.includes("Aave") ||
       fullStr.includes("AaveAccount") ||
+      fullStr.includes("AaveAccountSdk") ||
       fullStr.includes("EIP1193") ||
       fullStr.includes("lazy connection") ||
       fullStr.includes("MetaMask") ||
