@@ -999,6 +999,12 @@ export interface ApiTeamsResponse {
   errors: null | any
 }
 
+export interface ApiTeamsResultResponse {
+  status: number
+  data: ApiTeam[] | null
+  error?: string
+}
+
 export async function fetchTeamsByCompetitionId(id: string): Promise<ApiTeam[]> {
   try {
     const res = await fetch(`${API_BASE_URL}/teams/competition/${encodeURIComponent(id)}`, {
@@ -1018,10 +1024,10 @@ export async function fetchTeamsByCompetitionId(id: string): Promise<ApiTeam[]> 
   }
 }
 
-export async function fetchAllTeamsByCompetitionId(
+export async function fetchAllTeamsByCompetitionIdResult(
   id: string,
   token?: string | null
-): Promise<ApiTeam[]> {
+): Promise<ApiTeamsResultResponse> {
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -1039,14 +1045,29 @@ export async function fetchAllTeamsByCompetitionId(
     })
 
     if (!res.ok) {
-      return []
+      let errorMessage = `HTTP ${res.status}`
+      try {
+        const json = await res.json()
+        if (json && json.message) errorMessage = json.message
+      } catch {
+        // fallback
+      }
+      return { status: res.status, data: null, error: errorMessage }
     }
 
     const json: ApiTeamsResponse = await res.json()
-    return json.data || []
-  } catch {
-    return []
+    return { status: res.status, data: json.data || [] }
+  } catch (err: any) {
+    return { status: 500, data: null, error: err?.message || "Fetch failed" }
   }
+}
+
+export async function fetchAllTeamsByCompetitionId(
+  id: string,
+  token?: string | null
+): Promise<ApiTeam[]> {
+  const result = await fetchAllTeamsByCompetitionIdResult(id, token)
+  return result.data || []
 }
 
 export interface UpdateTeamPayload {

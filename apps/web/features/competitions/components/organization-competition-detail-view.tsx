@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen,
@@ -26,11 +27,12 @@ import {
   TableRow,
 } from "@workspace/ui/components/table";
 import {
-  fetchAllTeamsByCompetitionId,
+  fetchAllTeamsByCompetitionIdResult,
   getStoredToken,
   type ApiCompetition,
   type ApiTeam,
 } from '@/lib/competitions-api';
+import { routes } from '@/lib/routes';
 import type { Competition } from '../types';
 
 function getTeamInitials(name: string): string {
@@ -100,6 +102,7 @@ export function OrganizationCompetitionDetailView({
   prizePoolDisplay,
   guidebookUrl,
 }: OrganizationViewProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [storedToken, setStoredToken] = useState<string | null>(null);
 
@@ -107,11 +110,19 @@ export function OrganizationCompetitionDetailView({
     setStoredToken(getStoredToken());
   }, []);
 
-  const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
+  const { data: teamsResult, isLoading: isLoadingTeams } = useQuery({
     queryKey: ["all-competition-teams", id, storedToken],
-    queryFn: () => (id ? fetchAllTeamsByCompetitionId(id, storedToken || getStoredToken()) : []),
+    queryFn: () => (id ? fetchAllTeamsByCompetitionIdResult(id, storedToken || getStoredToken()) : null),
     enabled: Boolean(id),
   });
+
+  useEffect(() => {
+    if (teamsResult && [404, 401, 403].includes(teamsResult.status)) {
+      router.push(routes.competitions);
+    }
+  }, [teamsResult, router]);
+
+  const apiTeams = useMemo(() => teamsResult?.data || [], [teamsResult]);
 
   const formattedTeams = useMemo(() => {
     if (!apiTeams || apiTeams.length === 0) {
