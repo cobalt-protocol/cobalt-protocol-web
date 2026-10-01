@@ -21,8 +21,6 @@ export function TeamManagement({
   isLeader = true,
   onRename,
   onUpdateTeam,
-  onAcceptRequest,
-  onDeclineRequest,
 }: {
   capacity: number
   formation?: string
@@ -33,10 +31,8 @@ export function TeamManagement({
     name?: string
     description?: string
     visibility?: boolean
-    skills_suggestions?: string[]
+    skills_team?: string[]
   }) => Promise<{ success: boolean; error?: string }>
-  onAcceptRequest?: (requestId: string) => Promise<boolean | void>
-  onDeclineRequest?: (requestId: string) => Promise<boolean | void>
 }) {
   const [team, dispatch] = useReducer(teamReducer, initialTeam)
   const [editing, setEditing] = useState(false)
@@ -67,6 +63,11 @@ export function TeamManagement({
             </Badge>
           }
         />
+        {feedback && (
+          <div className="mb-4 rounded-lg border border-green-200 bg-green-50 p-3 text-xs text-green-700">
+            {feedback}
+          </div>
+        )}
         <div className="mb-5 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-slate-50 p-4">
           <span className="rounded-lg bg-primary p-3 text-white">
             <Users size={20} />
@@ -141,99 +142,6 @@ export function TeamManagement({
           ))}
         </div>
       </Panel>
-      <Panel>
-        <SectionHeading
-          title="Incoming Join Requests & Builder Pitches"
-          description="Review candidates before accepting them into your squad."
-          aside={
-            <Badge>
-              {team.requests.length} Pending · {remaining} Slots Remaining
-            </Badge>
-          }
-        />
-        <div className="space-y-4">
-          {team.requests.map((request) => (
-            <article
-              key={request.id}
-              className="rounded-xl border border-border bg-slate-50/70 p-4"
-            >
-              <div className="flex flex-wrap items-center gap-3">
-                <span className="flex size-10 items-center justify-center rounded-full bg-primary text-xs font-bold text-white">
-                  {request.member.initials}
-                </span>
-                <div>
-                  <h3 className="text-sm font-bold">
-                    {request.member.name} <Badge>{request.specialty}</Badge>
-                  </h3>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {request.location}
-                  </p>
-                </div>
-                <div className="ml-auto flex gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={async () => {
-                      if (onDeclineRequest) {
-                        await onDeclineRequest(request.id)
-                      }
-                      dispatch({
-                        type: "decline-request",
-                        requestId: request.id,
-                      })
-                      setFeedback(
-                        `Declined ${request.member.name}.`
-                      )
-                    }}
-                  >
-                    Decline
-                  </Button>
-                  <Button
-                    disabled={remaining === 0}
-                    onClick={async () => {
-                      if (onAcceptRequest) {
-                        await onAcceptRequest(request.id)
-                      }
-                      dispatch({
-                        type: "accept-request",
-                        requestId: request.id,
-                        capacity,
-                      })
-                      setFeedback(
-                        `Accepted ${request.member.name} into the squad.`
-                      )
-                    }}
-                  >
-                    Accept to Squad
-                  </Button>
-                </div>
-              </div>
-              <div className="my-4 rounded-lg border border-border/50 bg-white p-3">
-                <p className="text-xs font-bold">
-                  ⚡ Builder Pitch & What I Bring
-                </p>
-                <p className="mt-2 text-xs leading-6 text-muted-foreground">
-                  {request.pitch}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                {request.skills.map((skill) => (
-                  <Badge key={skill} tone="neutral">
-                    {skill}
-                  </Badge>
-                ))}
-              </div>
-            </article>
-          ))}
-          {team.requests.length === 0 && (
-            <p className="py-6 text-center text-sm text-muted-foreground">
-              No pending join requests.
-            </p>
-          )}
-        </div>
-        <p role="status" className="mt-4 text-xs text-teal-700">
-          {feedback}
-        </p>
-      </Panel>
       {isLeader && (
         <Modal title="Edit Team Profile" open={editing} onOpenChange={setEditing}>
           <form
@@ -254,7 +162,7 @@ export function TeamManagement({
                   name: name.trim(),
                   description: description.trim(),
                   visibility,
-                  skills_suggestions: parsedSkills,
+                  skills_team: parsedSkills,
                 })
 
                 if (!res.success) {

@@ -9,8 +9,10 @@ export const routes = {
   organizationCompetition: (id: string) => `/organization/competition/${encodeURIComponent(id)}`,
   joinTeam: (id: string) =>
     `/competition/${encodeURIComponent(id)}/join-team`,
-  organizationTeamDetail: (id: string) =>
-    `/organization/competition/${encodeURIComponent(id)}/team-detail`,
+  organizationTeamDetail: (id: string, teamId?: string) =>
+    teamId
+      ? `/organization/competition/${encodeURIComponent(id)}/team-detail?teamId=${encodeURIComponent(teamId)}`
+      : `/organization/competition/${encodeURIComponent(id)}/team-detail`,
   organizationWinner: (id: string) =>
     `/organization/competition/${encodeURIComponent(id)}/winner`,
   workspace: (id: string) => `/my-competition/${encodeURIComponent(id)}`,

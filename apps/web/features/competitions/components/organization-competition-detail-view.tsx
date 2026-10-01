@@ -351,15 +351,16 @@ export function OrganizationCompetitionDetailView({
             <TableHeader className="bg-[#EFF4FF] border-0 [&_tr]:border-b-0">
               <TableRow className="bg-[#EFF4FF] hover:bg-[#EFF4FF] border-0 border-b-0">
                 <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 pl-6 w-[30%]">TEAM NAME</TableHead>
-                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[40%]">TEAM MEMBERS</TableHead>
+                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 w-[35%]">TEAM MEMBERS</TableHead>
                 <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-center">TEAM SIZE</TableHead>
-                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right pr-6">SUBMISSION STATUS</TableHead>
+                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right">SUBMISSION STATUS</TableHead>
+                <TableHead className="bg-[#EFF4FF] text-xs font-semibold text-slate-500 uppercase tracking-wider py-4 text-right pr-6">ACTION</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {isLoadingTeams ? (
                 <TableRow>
-                  <TableCell colSpan={4} className="py-8 text-center text-slate-500 text-sm">
+                  <TableCell colSpan={5} className="py-8 text-center text-slate-500 text-sm">
                     <Loader2 className="w-5 h-5 animate-spin mx-auto text-blue-600 mb-2" />
                     Loading participating teams...
                   </TableCell>
@@ -367,7 +368,11 @@ export function OrganizationCompetitionDetailView({
               ) : (
                 <>
                   {filteredTeams.map((team) => (
-                    <TableRow key={team.id} className="hover:bg-slate-50/50 transition-colors border-0 border-b-0">
+                    <TableRow
+                      key={team.id}
+                      onClick={() => router.push(routes.organizationTeamDetail(id, team.id))}
+                      className="hover:bg-slate-50/50 transition-colors border-0 border-b-0 cursor-pointer"
+                    >
                       <TableCell className="py-4 pl-6">
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-bold shrink-0">
@@ -384,16 +389,23 @@ export function OrganizationCompetitionDetailView({
                           {team.size} members
                         </Badge>
                       </TableCell>
-                      <TableCell className="py-4 text-right pr-6">
+                      <TableCell className="py-4 text-right">
                         <div className="flex justify-end">
                           <StatusBadge status={team.status} visibility={team.visibility} />
                         </div>
+                      </TableCell>
+                      <TableCell className="py-4 text-right pr-6" onClick={(e) => e.stopPropagation()}>
+                        <Link href={routes.organizationTeamDetail(id, team.id)}>
+                          <Button variant="ghost" size="sm" className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 font-medium">
+                            View Detail
+                          </Button>
+                        </Link>
                       </TableCell>
                     </TableRow>
                   ))}
                   {filteredTeams.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} className="py-8 text-center text-slate-500 text-sm">
+                      <TableCell colSpan={5} className="py-8 text-center text-slate-500 text-sm">
                         {searchQuery
                           ? `No teams found matching "${searchQuery}"`
                           : "No teams found for this competition"}

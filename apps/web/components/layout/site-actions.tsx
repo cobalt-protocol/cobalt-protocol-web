@@ -10,7 +10,7 @@ import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
 import { generateNonce, verifySignature, getMe, type User, type UserRole } from "@/lib/auth-api"
 import { mapApiProfileToBuilderProfile } from "@/lib/profile-api"
-import { createCompetitionTeam, fetchMyTeams, type ApiTeam } from "@/lib/competitions-api"
+import { createCompetitionTeam } from "@/lib/competitions-api"
 import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly, signMessageWithViem } from "@/lib/wagmi"
 import {
   isBuilderProfile,
@@ -538,7 +538,11 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     navigate(
       redirectTo ??
         (membership.status === "active"
-          ? routes.workspace(membership.competitionId || membership.competitionSlug)
+          ? routes.workspace(
+              membership.teamId ||
+                membership.competitionId ||
+                membership.competitionSlug
+            )
           : routes.dashboard)
     )
     return null
@@ -574,7 +578,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           name: input.name.trim(),
           visibility: input.visibility === "public",
           description: input.requirements.trim(),
-          skills: skillsList,
+          skills_team: skillsList,
         },
         sessionToken
       )

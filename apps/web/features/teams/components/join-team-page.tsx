@@ -88,8 +88,8 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
               : "Squad Lead")
 
         const skills =
-          item.skills_suggestions && item.skills_suggestions.length > 0
-            ? item.skills_suggestions.map((s) => s.name)
+          item.skills_team && item.skills_team.length > 0
+            ? item.skills_team.map((s) => s.name)
             : ["Fullstack Developer", "Smart Contract Dev"]
 
         return {
@@ -151,6 +151,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           inviteCode,
         })
       } else {
+        // Public team: submit a join request to the backend
         await requestJoinTeam(team.id)
         joinTeam({
           competitionSlug: competition.slug,
@@ -165,7 +166,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
         })
       }
     } catch (err: any) {
-      setError(err?.message || "Failed to send join request. Please ensure you are logged in.")
+      setError(err?.message || "Failed to join team. Please ensure you are logged in.")
     } finally {
       setSubmittingTeamId(null)
     }
@@ -261,9 +262,9 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
                       ? `User ${matchedApiTeam.user_id.slice(-6)}`
                       : "Squad Lead")
                 const skills =
-                  matchedApiTeam.skills_suggestions &&
-                  matchedApiTeam.skills_suggestions.length > 0
-                    ? matchedApiTeam.skills_suggestions.map((s) => s.name)
+                  matchedApiTeam.skills_team &&
+                  matchedApiTeam.skills_team.length > 0
+                    ? matchedApiTeam.skills_team.map((s) => s.name)
                     : ["Fullstack Developer"]
 
                 await requestTeam(
@@ -281,20 +282,12 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
                 return
               }
 
-              // Direct API call by reference code
-              const res = await acceptTeamInviteByCode(normalized)
-              const joinedTeam = res?.data?.team || res?.data
-              joinTeam({
-                competitionSlug: competition.slug,
-                teamId: joinedTeam?.team_id || joinedTeam?.id || "joined-team",
-                teamName: joinedTeam?.name || "Joined Team",
-                visibility: "private",
-                requirements: "",
-                ownerUsername: "Leader",
-                role: "member",
-                status: "active",
-                inviteCode: normalized,
-              })
+              // The reference-code accept endpoint was removed; an invite can
+              // only be accepted when its team is known. Surface a clear error
+              // when the code does not match a team in this competition.
+              throw new Error(
+                "We couldn't match that team code to a team in this competition. Please ask the team leader for a valid invite link."
+              )
             } catch (err: any) {
               setError(
                 err?.message ||

@@ -12,7 +12,6 @@ import type { RegistrationCompetition } from "@/features/registration/types"
 import { isProfileComplete } from "@/features/registration/lib/registration-validation"
 import { getMe } from "@/lib/auth-api"
 import {
-  getMyProfile,
   updateMyProfile,
   mapApiProfileToBuilderProfile,
   type UpdateProfilePayload,
@@ -63,29 +62,11 @@ export function ProfilePage({
         if (res?.data?.user) {
           const remoteProfile = mapApiProfileToBuilderProfile(res.data.user)
           setActiveProfile(remoteProfile)
-        } else {
-          return getMyProfile(sessionToken).then((pRes) => {
-            if (!isMounted) return
-            if (pRes?.data) {
-              const remoteProfile = mapApiProfileToBuilderProfile(pRes.data)
-              setActiveProfile(remoteProfile)
-            }
-          })
         }
       })
       .catch((err) => {
         if (!isMounted) return
-        getMyProfile(sessionToken)
-          .then((pRes) => {
-            if (!isMounted) return
-            if (pRes?.data) {
-              const remoteProfile = mapApiProfileToBuilderProfile(pRes.data)
-              setActiveProfile(remoteProfile)
-            }
-          })
-          .catch((pErr) => {
-            console.warn("Could not fetch remote profile:", err || pErr)
-          })
+        console.warn("Could not fetch remote profile:", err)
       })
       .finally(() => {
         if (isMounted) setIsFetchingRemote(false)

@@ -107,38 +107,6 @@ export async function generateNonce(
   return response.json()
 }
 
-export async function getExistingNonce(
-  walletAddress: string
-): Promise<NonceResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/nonce/existing`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ walletAddress }),
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    let errorMessage = `Failed to fetch existing nonce (${response.status})`
-    try {
-      const parsed = JSON.parse(errorText)
-      if (parsed.message) {
-        errorMessage += `: ${Array.isArray(parsed.message) ? parsed.message.join(", ") : parsed.message}`
-      }
-    } catch {
-      if (errorText.includes("<!DOCTYPE") || errorText.includes("<html")) {
-        errorMessage += `: Server returned HTML error (Route Not Found)`
-      } else {
-        errorMessage += `: ${errorText.slice(0, 150)}`
-      }
-    }
-    throw new Error(errorMessage)
-  }
-
-  return response.json()
-}
-
 export async function verifySignature(params: {
   walletAddress: string
   signature: string

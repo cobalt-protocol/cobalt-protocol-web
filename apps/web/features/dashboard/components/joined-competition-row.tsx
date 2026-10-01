@@ -54,9 +54,14 @@ export function JoinedCompetitionRow({
   onAction: () => void
 }) {
   const { chain } = useAccount()
-  const rawTxHash = competition.txHash || competition.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  const rawTxHash =
+    competition.txHash ||
+    competition.tx_hash ||
+    "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
   const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`
-  const explorerBaseUrl = (chain?.blockExplorers?.default?.url || "https://scan.bohr.life").replace(/\/$/, "")
+  const explorerBaseUrl = (
+    chain?.blockExplorers?.default?.url || "https://scan.bohr.life"
+  ).replace(/\/$/, "")
   const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`
 
   const styles = phaseStyles[competition.phase]
@@ -69,6 +74,13 @@ export function JoinedCompetitionRow({
           ? Eye
           : ArrowRight
   const OrganizerIcon = competition.phase === "closed" ? Blocks : Zap
+
+  const prizeLabel =
+    competition.tokenPrizeFormatted ||
+    `${formatMoney(competition.amountUsd)} ${competition.currency}`
+
+  const isDisabled = Boolean(competition.pending && competition.role !== "lead")
+
   return (
     <article
       className={`flex flex-col justify-between gap-6 rounded-xl border-l-[6px] bg-white px-5 py-7 shadow-xs sm:px-6 lg:min-h-36 lg:flex-row lg:items-center ${styles.border}`}
@@ -90,7 +102,7 @@ export function JoinedCompetitionRow({
             href={explorerUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="hover:underline hover:text-primary transition-colors"
+            className="transition-colors hover:text-primary hover:underline"
           >
             {competition.title}
           </a>
@@ -120,11 +132,12 @@ export function JoinedCompetitionRow({
         <p
           className={`mt-1 text-xl font-extrabold tracking-tight ${competition.phase === "claim" ? "text-teal-800" : ""}`}
         >
-          {formatMoney(competition.amountUsd)} {competition.currency}
+          {prizeLabel}
         </p>
         <button
+          disabled={isDisabled}
           onClick={onAction}
-          className={`mt-1 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${styles.button}`}
+          className={`mt-1 flex min-h-10 w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition-colors ${styles.button} ${isDisabled ? "pointer-events-none cursor-not-allowed opacity-50" : ""}`}
         >
           {competition.phase === "claim" && <ActionIcon size={16} />}
           {competition.actionLabel}

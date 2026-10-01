@@ -1,6 +1,8 @@
 "use client"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useEffect, useState } from "react"
+import { useQuery } from "@tanstack/react-query"
 import {
   ContactRound,
   LayoutDashboard,
@@ -10,10 +12,28 @@ import {
 } from "lucide-react"
 import { DropdownMenu } from "@workspace/ui/components/dropdown-menu"
 import { routes } from "@/lib/routes"
+import { fetchApiMe, getStoredToken } from "@/lib/competitions-api"
 import { useSiteActions } from "./site-actions"
+
 export function AccountMenu() {
   const pathname = usePathname()
   const { disconnectWallet, showNotice } = useSiteActions()
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    setStoredToken(getStoredToken())
+  }, [])
+
+  const { data: meUser } = useQuery({
+    queryKey: ["user-me", storedToken],
+    queryFn: () => fetchApiMe(storedToken || getStoredToken()),
+    enabled: Boolean(storedToken),
+  })
+
+  const isOrganization =
+    meUser?.role === "organization" || meUser?.role === "organizer"
+  const dashboardHref = isOrganization ? routes.organization : routes.dashboard
+
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger
@@ -33,33 +53,41 @@ export function AccountMenu() {
                 icon: ContactRound,
               },
               {
-                href: routes.dashboard,
+                href: dashboardHref,
                 title: "Dashboard",
-                description: "Track active competitions & submissions",
+                description: isOrganization
+                  ? "Manage competitions & created events"
+                  : "Track active competitions & submissions",
                 icon: LayoutDashboard,
               },
-            ].map(({ href, title, description, icon: Icon }) => (
-              <DropdownMenu.LinkItem
-                key={href}
-                closeOnClick
-                render={<Link href={href} />}
-                className={`flex items-center gap-3 rounded-lg p-3 outline-none cursor-pointer data-highlighted:bg-blue-50 ${pathname === href ? "bg-blue-50 text-primary" : ""}`}
-              >
-                <span
-                  className={`rounded-lg p-2 ${pathname === href ? "bg-primary text-white" : "bg-blue-50"}`}
+            ].map(({ href, title, description, icon: Icon }) => {
+              const isActive =
+                pathname === href ||
+                (href === routes.organization &&
+                  pathname.startsWith("/organization/competition"))
+              return (
+                <DropdownMenu.LinkItem
+                  key={href}
+                  closeOnClick
+                  render={<Link href={href} />}
+                  className={`flex items-center gap-3 rounded-lg p-3 outline-none cursor-pointer data-highlighted:bg-blue-50 ${isActive ? "bg-blue-50 text-primary" : ""}`}
                 >
-                  <Icon size={17} />
-                </span>
-                <span>
-                  <strong className="block text-sm font-semibold">
-                    {title}
-                  </strong>
-                  <span className="text-xs text-muted-foreground">
-                    {description}
+                  <span
+                    className={`rounded-lg p-2 ${isActive ? "bg-primary text-white" : "bg-blue-50"}`}
+                  >
+                    <Icon size={17} />
                   </span>
-                </span>
-              </DropdownMenu.LinkItem>
-            ))}
+                  <span>
+                    <strong className="block text-sm font-semibold">
+                      {title}
+                    </strong>
+                    <span className="text-xs text-muted-foreground">
+                      {description}
+                    </span>
+                  </span>
+                </DropdownMenu.LinkItem>
+              )
+            })}
             <DropdownMenu.Separator className="my-2 h-px bg-border" />
             <DropdownMenu.Item
               onClick={() =>
@@ -85,3 +113,4 @@ export function AccountMenu() {
     </DropdownMenu.Root>
   )
 }
+

@@ -1,20 +1,27 @@
 "use client"
 
-import { useEffect } from "react"
-import { useSiteActions } from "@/components/layout/site-actions"
+import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
-import { notFound, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
+import { useAccount } from "wagmi"
 import {
   fetchTeamCompetitionDetailResult,
+  fetchTeamMembersResult,
+  getStoredToken,
   mapApiCompetitionToCompetition,
 } from "@/lib/competitions-api"
-import { Breadcrumbs, PageContainer, Panel } from "@/components/ui/page-primitives"
+import {
+  Breadcrumbs,
+  PageContainer,
+  Panel,
+} from "@/components/ui/page-primitives"
 import { CompetitionOverview } from "@/features/competitions/components/competition-overview"
 import { CompetitionTimeline } from "@/features/competitions/components/competition-timeline"
 import type { Competition } from "@/features/competitions/types"
 import { routes } from "@/lib/routes"
 import { SubmissionForm } from "./submission-form"
 import { RegisteredTeam } from "./registered-team"
+import { IncomingJoinRequests } from "./incoming-join-requests"
 import { WorkspaceAnnouncements } from "./workspace-announcements"
 
 export function CompetitionWorkspace({
@@ -25,30 +32,61 @@ export function CompetitionWorkspace({
   teamId?: string
 }) {
   const router = useRouter()
-  const { connected } = useSiteActions()
+  const { isConnected, status: accountStatus } = useAccount()
 
-  const { data: teamCompResult, isFetched, isLoading } = useQuery({
+  // Token sesi disimpan di localStorage (client-only). Baca dulu sebelum
+  // memutuskan redirect, karena saat hard refresh wagmi sempat berstatus
+  // "disconnected" sesaat sebelum proses reconnect selesai.
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+  const [hasCheckedToken, setHasCheckedToken] = useState(false)
+
+  useEffect(() => {
+    setStoredToken(getStoredToken())
+    setHasCheckedToken(true)
+  }, [])
+
+  useEffect(() => {
+    const isWagmiLoading =
+      accountStatus === "connecting" || accountStatus === "reconnecting"
+    // Jangan redirect selama token sesi masih tersimpan (wallet sedang
+    // reconnect), dan jangan putuskan apa pun sebelum token selesai dibaca.
+    if (hasCheckedToken && !isWagmiLoading && !isConnected && !storedToken) {
+      router.push(routes.competitions)
+    }
+  }, [hasCheckedToken, isConnected, accountStatus, storedToken, router])
+
+  const {
+    data: teamCompResult,
+    isFetched: isCompFetched,
+    isLoading: isCompLoading,
+  } = useQuery({
     queryKey: ["team-competition", teamId],
     queryFn: () => (teamId ? fetchTeamCompetitionDetailResult(teamId) : null),
     enabled: Boolean(teamId),
   })
 
+  const {
+    data: teamMembersResult,
+    isFetched: isMembersFetched,
+  } = useQuery({
+    queryKey: ["team-members", teamId],
+    queryFn: () => (teamId ? fetchTeamMembersResult(teamId) : null),
+    enabled: Boolean(teamId),
+  })
+
   useEffect(() => {
-    const targetCompId = initialCompetition?.id || initialCompetition?.slug || teamId
-    if (targetCompId) {
-      if (!connected) {
-        router.push(routes.competition(targetCompId))
-      } else if (
-        isFetched &&
-        (teamCompResult?.status === 404 ||
-          teamCompResult?.status === 401 ||
-          teamCompResult?.status === 403 ||
-          !teamCompResult?.data)
-      ) {
-        router.push(routes.competition(targetCompId))
-      }
+    if (!isCompFetched && !isMembersFetched) return
+    if (
+      teamCompResult?.status === 404 ||
+      teamCompResult?.status === 401 ||
+      teamCompResult?.status === 403 ||
+      (isCompFetched && !teamCompResult?.data) ||
+      teamMembersResult?.status === 404 ||
+      teamMembersResult?.status === 403
+    ) {
+      router.push(routes.competitions)
     }
-  }, [connected, isFetched, teamCompResult, teamId, initialCompetition, router])
+  }, [isCompFetched, isMembersFetched, teamCompResult, teamMembersResult, router])
 
   const fetchedComp = teamCompResult?.data?.competition
     ? mapApiCompetitionToCompetition(teamCompResult.data.competition)
@@ -56,7 +94,7 @@ export function CompetitionWorkspace({
 
   const competition = fetchedComp || initialCompetition
 
-  if (isLoading && !competition) {
+  if (isCompLoading && !competition) {
     return (
       <PageContainer>
         <Panel>
@@ -68,12 +106,14 @@ export function CompetitionWorkspace({
     )
   }
 
-  if (isFetched && !competition) {
-    notFound()
+  if (isCompFetched && !competition) {
+    router.replace("/competition")
+    return null
   }
 
   if (!competition) {
-    notFound()
+    router.replace("/competition")
+    return null
   }
 
   return (
@@ -97,7 +137,8 @@ export function CompetitionWorkspace({
           formation={competition.formation}
           teamId={teamId}
         />
-        <SubmissionForm competitionId={competition.id} />
+        <IncomingJoinRequests teamId={teamId} />
+        <SubmissionForm competitionId={competition.id} teamId={teamId} />
         <WorkspaceAnnouncements />
       </div>
     </PageContainer>

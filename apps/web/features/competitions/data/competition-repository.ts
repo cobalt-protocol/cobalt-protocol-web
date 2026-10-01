@@ -2,7 +2,6 @@ import type { Competition } from "../types"
 import {
   fetchCompetitions,
   fetchCompetitionById,
-  fetchTeamCompetitionDetail,
   mapApiCompetitionToCompetition,
 } from "@/lib/competitions-api"
 
@@ -21,20 +20,14 @@ export async function getCompetitionById(
     return directComp
   }
 
-  // 2. Direct fetch competition by Team ID from GET /api/v1/teams/:teamId/competition
-  const teamComp = await fetchTeamCompetitionDetail(id)
-  if (teamComp?.competition) {
-    return mapApiCompetitionToCompetition(teamComp.competition)
-  }
-
-  // 3. Fallback: Search in overall competitions list (by ID or slug)
+  // 2. Fallback: Search in overall competitions list (by ID or slug)
   const competitions = await getCompetitions()
   const exactMatch = competitions.find(
     (competition) => competition.id === id || competition.slug === id
   )
   if (exactMatch) return exactMatch
 
-  // 4. Fallback exact case-insensitive match (by ID or slug)
+  // 3. Fallback exact case-insensitive match (by ID or slug)
   const idLower = id.toLowerCase()
   return competitions.find((c) => c.id.toLowerCase() === idLower || c.slug.toLowerCase() === idLower)
 }

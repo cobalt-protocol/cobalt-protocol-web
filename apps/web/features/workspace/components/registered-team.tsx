@@ -2,21 +2,16 @@
 import { useEffect, useState } from "react"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
-import { Button } from "@workspace/ui/components/button"
 import { TeamManagement } from "./team-management"
 import { useSiteActions } from "@/components/layout/site-actions"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
-  acceptTeamRequest,
   fetchApiMe,
   fetchTeamDetail,
-  fetchTeamRequests,
   getStoredToken,
   parseCapacityFromFormation,
-  rejectTeamRequest,
   updateTeamApi,
 } from "@/lib/competitions-api"
-import type { JoinRequest } from "../types"
 
 export function RegisteredTeam({
   competitionSlug,
@@ -29,12 +24,14 @@ export function RegisteredTeam({
   formation?: string
   teamId?: string
 }) {
+  const [mounted, setMounted] = useState(false)
   const { memberships, ready, renameTeam, reloadMemberships } = useMemberships()
   const { profile, connected } = useSiteActions()
   const queryClient = useQueryClient()
 
   const [storedToken, setStoredToken] = useState<string | null>(null)
   useEffect(() => {
+    setMounted(true)
     setStoredToken(getStoredToken())
     const handleAuth = () => setStoredToken(getStoredToken())
     if (typeof window !== "undefined") {
@@ -63,12 +60,6 @@ export function RegisteredTeam({
     enabled: Boolean(effectiveTeamId),
   })
 
-  const { data: apiRequests = [] } = useQuery({
-    queryKey: ["team-requests", effectiveTeamId, storedToken],
-    queryFn: () => (effectiveTeamId ? fetchTeamRequests(effectiveTeamId, storedToken) : []),
-    enabled: Boolean(effectiveTeamId && storedToken),
-  })
-
   const { data: meUser } = useQuery({
     queryKey: ["user-me", storedToken],
     queryFn: () => (storedToken ? fetchApiMe(storedToken) : null),
@@ -88,53 +79,11 @@ export function RegisteredTeam({
       : true
   )
 
-  const mappedRequests: JoinRequest[] = (apiRequests || []).map((req) => {
-    const displayName =
-      req.user?.username ||
-      (req.user?.wallet_address
-        ? `${req.user.wallet_address.slice(0, 6)}...${req.user.wallet_address.slice(-4)}`
-        : "Builder")
-    const initials = displayName.slice(0, 2).toUpperCase()
-    return {
-      id: req.id,
-      member: {
-        id: req.user?.id || req.user_id,
-        name: displayName,
-        email: req.user?.wallet_address
-          ? `${req.user.wallet_address.slice(0, 6)}...${req.user.wallet_address.slice(-4)}`
-          : "",
-        role: "member",
-        initials,
-      },
-      specialty: "Protocol Builder",
-      location: req.user?.location || req.user?.institution || "Web3 Ecosystem",
-      pitch: req.user?.skill_description?.description || "No skill description provided.",
-      skills: ["Smart Contracts", "Full-Stack", "Web3"],
-    }
-  })
-
-  const handleAcceptRequest = async (requestId: string) => {
-    if (!effectiveTeamId) return
-    const success = await acceptTeamRequest(effectiveTeamId, requestId, storedToken)
-    if (success) {
-      queryClient.invalidateQueries({ queryKey: ["team-requests", effectiveTeamId] })
-      queryClient.invalidateQueries({ queryKey: ["team-detail", effectiveTeamId] })
-    }
-  }
-
-  const handleDeclineRequest = async (requestId: string) => {
-    if (!effectiveTeamId) return
-    const success = await rejectTeamRequest(effectiveTeamId, requestId, storedToken)
-    if (success) {
-      queryClient.invalidateQueries({ queryKey: ["team-requests", effectiveTeamId] })
-    }
-  }
-
   const handleUpdateTeam = async (payload: {
     name?: string
     description?: string
     visibility?: boolean
-    skills_suggestions?: string[]
+    skills_team?: string[]
   }) => {
     if (!effectiveTeamId) {
       if (payload.name) renameTeam(competitionSlug, payload.name)
@@ -199,7 +148,7 @@ export function RegisteredTeam({
     ? parseCapacityFromFormation(effectiveFormation, apiMaxTeamSize ?? capacity)
     : (apiMaxTeamSize ?? capacity)
 
-  if (!connected) return null
+  if (!mounted || !connected) return null
 
   if (membership?.status === "pending")
     return (
@@ -243,15 +192,12 @@ export function RegisteredTeam({
         isLeader={isLeader}
         onRename={(name) => renameTeam(competitionSlug, name)}
         onUpdateTeam={handleUpdateTeam}
-        onAcceptRequest={handleAcceptRequest}
-        onDeclineRequest={handleDeclineRequest}
         initialTeam={{
           name: teamName,
           description: apiTeam?.description || "",
           visibility: apiTeam ? apiTeam.visibility : (membership?.visibility !== "private"),
-          skills: apiTeam?.skills_suggestions?.map((s: { name: string }) => s.name) || [],
+          skills: apiTeam?.skills_team?.map((s: { name: string }) => s.name) || [],
           members: initialMembers,
-          requests: mappedRequests,
         }}
       />
     </>

@@ -1,7 +1,7 @@
 "use client"
 import { useCallback, useEffect, useState } from "react"
 import { usePathname } from "next/navigation"
-import { fetchMyTeams, type ApiTeam } from "@/lib/competitions-api"
+import { fetchUserDashboard } from "@/lib/competitions-api"
 import type { PreviewMembership } from "../types"
 
 export function useMemberships() {
@@ -18,7 +18,11 @@ export function useMemberships() {
       }
     }
 
-    if (pathname?.startsWith("/organization") || pathname?.includes("/join-team")) {
+        if (
+      pathname?.startsWith("/organization") ||
+      pathname?.includes("/join-team") ||
+      pathname?.startsWith("/my-competition")
+    ) {
       setMemberships([])
       setReady(true)
       return
@@ -36,38 +40,42 @@ export function useMemberships() {
     }
 
     try {
-      const apiTeams = await fetchMyTeams(token)
-      if (Array.isArray(apiTeams)) {
-        const mapped: PreviewMembership[] = apiTeams.map((team: ApiTeam) => {
-          const compObj = (team as any).competition
-          const compSlug =
-            compObj?.slug || (team as any).competition_slug || team.competition_id || ""
-          const compId = compObj?.id || team.competition_id || ""
-          const inviteCode =
-            team.team_codes?.[0]?.code || (team as any).team_code || null
-          const visibility =
-            (team as any).visibility === false || (team as any).visibility === "private"
-              ? "private"
-              : "public"
+      const dashboard = await fetchUserDashboard(token)
+      const mapped: PreviewMembership[] = []
 
-          return {
-            competitionId: compId,
-            competitionSlug: compSlug,
-            teamId: team.id,
-            teamName: team.name,
-            visibility,
-            requirements: team.description || "",
-            ownerUsername: (team as any).lead?.username || (team as any).user?.username || "",
-            role: "lead",
-            status: "active",
-            inviteCode,
-            rawTeam: team,
-          }
+      for (const membership of dashboard?.memberships || []) {
+        const competitionId = membership.competition?.id || ""
+        mapped.push({
+          competitionId,
+          competitionSlug: competitionId,
+          teamId: membership.teamId,
+          teamName: membership.teamName,
+          visibility:
+            membership.visibility === "private" ? "private" : "public",
+          requirements: "",
+          ownerUsername: "",
+          role: membership.role === "lead" ? "lead" : "member",
+          status: "active",
+          inviteCode: null,
         })
-        setMemberships(mapped)
-      } else {
-        setMemberships([])
       }
+
+      for (const request of dashboard?.pendingRequests || []) {
+        mapped.push({
+          competitionId: request.competitionId || "",
+          competitionSlug: request.competitionSlug || request.competitionId || "",
+          teamId: request.teamId,
+          teamName: request.teamName,
+          visibility: "public",
+          requirements: "",
+          ownerUsername: "",
+          role: "member",
+          status: "pending",
+          inviteCode: null,
+        })
+      }
+
+      setMemberships(mapped)
     } catch {
       setMemberships([])
     } finally {
@@ -76,7 +84,11 @@ export function useMemberships() {
   }, [pathname])
 
   useEffect(() => {
-    if (pathname?.startsWith("/organization") || pathname?.includes("/join-team")) {
+    if (
+      pathname?.startsWith("/organization") ||
+      pathname?.includes("/join-team") ||
+      pathname?.startsWith("/my-competition")
+    ) {
       setMemberships([])
       setReady(true)
       return
@@ -108,7 +120,8 @@ export function useMemberships() {
       const exists = prev.some(
         (item) =>
           item.competitionSlug === membership.competitionSlug ||
-          (membership.competitionId && item.competitionId === membership.competitionId)
+          (membership.competitionId &&
+            item.competitionId === membership.competitionId)
       )
       if (exists) return prev
       return [...prev, membership]
@@ -120,7 +133,8 @@ export function useMemberships() {
     if (!name.trim() || name.trim().length > 24) return false
     setMemberships((prev) =>
       prev.map((item) =>
-        item.competitionSlug === competitionSlug || item.competitionId === competitionSlug
+        item.competitionSlug === competitionSlug ||
+        item.competitionId === competitionSlug
           ? { ...item, teamName: name.trim() }
           : item
       )

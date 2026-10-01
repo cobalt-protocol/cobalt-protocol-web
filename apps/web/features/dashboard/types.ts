@@ -12,6 +12,7 @@ export interface DashboardCompetition {
   id: string
   txHash?: string | null
   tx_hash?: string | null
+  competitionId?: string | null
   competitionSlug: string | null
   title: string
   category: string
@@ -21,10 +22,12 @@ export interface DashboardCompetition {
   memberCount: number | null
   amountUsd: number
   currency: string
+  tokenPrizeFormatted?: string | null
   poolLabel: string
   actionLabel: string
   source: "fixture" | "local"
   pending?: boolean
+  role?: "lead" | "member"
 }
 export interface DashboardProfile {
   name: string

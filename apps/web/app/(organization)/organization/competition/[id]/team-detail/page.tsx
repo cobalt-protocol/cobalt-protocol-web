@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import React, { useState, useEffect, Suspense } from 'react';
+import Link from 'next/link';
+import { useRouter, useParams, useSearchParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
-import { fetchApiMe, getStoredToken } from '@/lib/competitions-api';
+import { fetchApiMe, fetchTeamDetail, getStoredToken } from '@/lib/competitions-api';
 import {
     ChevronRight,
     FileText,
@@ -20,16 +21,35 @@ import { Card, CardContent } from "@workspace/ui/components/card";
 
 // --- Helper Components ---
 
+interface TeamMemberItem {
+    initials: string;
+    name: string;
+    handle: string;
+    color?: string;
+    text?: string;
+}
+
 const AvatarInitials = ({ initials, bgClass = "bg-blue-100", textClass = "text-blue-700" }: { initials: string, bgClass?: string, textClass?: string }) => (
     <div className={`w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${bgClass} ${textClass}`}>
         {initials}
     </div>
 );
 
-export default function TeamDetail() {
+function getInitials(name: string): string {
+    if (!name) return "TS";
+    const words = name.trim().split(/\s+/);
+    if (words.length >= 2 && words[0]?.[0] && words[1]?.[0]) {
+        return (words[0][0] + words[1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+}
+
+function TeamDetailContent() {
     const router = useRouter();
     const params = useParams();
+    const searchParams = useSearchParams();
     const compId = (params?.id as string) || '';
+    const teamId = searchParams.get('teamId') || '';
     const { isConnected } = useAccount();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
@@ -43,6 +63,12 @@ export default function TeamDetail() {
         queryKey: ["user-me", storedToken],
         queryFn: () => fetchApiMe(storedToken || getStoredToken()),
         enabled: Boolean(storedToken),
+    });
+
+    const { data: apiTeam } = useQuery({
+        queryKey: ["team-detail-page", teamId, storedToken],
+        queryFn: () => (teamId ? fetchTeamDetail(teamId, storedToken) : null),
+        enabled: Boolean(teamId) && Boolean(storedToken),
     });
 
     const isOrganizationRole = Boolean(
@@ -67,6 +93,38 @@ export default function TeamDetail() {
             </div>
         );
     }
+    const displayTeamName = apiTeam?.name || "Team SwarmSynthetix";
+    const teamInitials = getInitials(displayTeamName);
+
+    const roles = apiTeam?.team_roles || [];
+    const leaderRole = roles.find((r: any) => r.role === "leader") || roles[0];
+    const leaderUser = leaderRole?.user;
+    const leaderName = leaderUser?.username || leaderUser?.email || (leaderUser?.wallet_address ? `${leaderUser.wallet_address.slice(0, 6)}...${leaderUser.wallet_address.slice(-4)}` : "Alex Rivera");
+    const leaderEmail = leaderUser?.email || (leaderUser?.wallet_address ? `${leaderUser.wallet_address.slice(0, 6)}...${leaderUser.wallet_address.slice(-4)}` : "alex.rivera@agentmail.com");
+
+    const dynamicMembers: TeamMemberItem[] | null = roles.length > 0
+        ? roles.map((r: any) => {
+            const u = r.user;
+            const name = u?.username || u?.email || (u?.wallet_address ? `${u.wallet_address.slice(0, 6)}...${u.wallet_address.slice(-4)}` : "Collaborator");
+            const handle = u?.email ? `@${u.email.split("@")[0]}` : (u?.wallet_address ? `@${u.wallet_address.slice(0, 6)}` : "@collaborator");
+            return {
+                name,
+                handle,
+                initials: getInitials(name),
+                color: "bg-blue-100",
+                text: "text-blue-700",
+            };
+        })
+        : null;
+
+    const defaultMembers: TeamMemberItem[] = [
+        { initials: "SC", name: "Sarah Chen", handle: "@sarahchen", color: "bg-emerald-100", text: "text-emerald-700" },
+        { initials: "DK", name: "Daniyal Kim", handle: "@daniyalkim", color: "bg-amber-100", text: "text-amber-700" },
+        { initials: "PS", name: "Priya Sharma", handle: "@priyasharma", color: "bg-purple-100", text: "text-purple-700" },
+    ];
+
+    const memberList: TeamMemberItem[] = dynamicMembers || defaultMembers;
+
     return (
         <div className="min-h-screen bg-slate-50/50 p-6 md:p-10 font-sans text-slate-900">
             <div className="max-w-6xl mx-auto space-y-6">
@@ -74,9 +132,9 @@ export default function TeamDetail() {
                 {/* --- Header Section --- */}
                 <div>
                     <div className="flex items-center text-sm text-slate-500 mb-2">
-                        <span>Dashboard</span>
+                        <Link href="/organization/competition" className="hover:underline">Dashboard</Link>
                         <ChevronRight className="w-4 h-4 mx-1" />
-                        <span>Competition Detail</span>
+                        <Link href={compId ? `/organization/competition/${compId}` : '/organization/competition'} className="hover:underline">Competition Detail</Link>
                         <ChevronRight className="w-4 h-4 mx-1" />
                         <span className="text-blue-600 font-medium">Team Detail</span>
                     </div>
@@ -93,7 +151,7 @@ export default function TeamDetail() {
                             <CardContent className="p-0">
                                 {/* Team Overview Header */}
                                 <div className="p-6 pb-4 flex gap-4">
-                                    <AvatarInitials initials="SS" bgClass="bg-blue-600" textClass="text-white" />
+                                    <AvatarInitials initials={teamInitials} bgClass="bg-blue-600" textClass="text-white" />
                                     <div>
                                         <h3 className="font-semibold text-slate-900">Team Overview</h3>
                                         <p className="text-xs text-slate-500">COHORT 2025 # TRACK A</p>
@@ -104,7 +162,7 @@ export default function TeamDetail() {
                                 <div className="px-6 py-4 border-0 bg-slate-50/50">
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TEAM NAME</p>
                                     <div className="flex items-center gap-2">
-                                        <span className="font-bold text-lg text-slate-900">Team SwarmSynthetix</span>
+                                        <span className="font-bold text-lg text-slate-900">{displayTeamName}</span>
                                         <CheckCircle2 className="w-5 h-5 text-blue-500 fill-blue-50" />
                                     </div>
                                 </div>
@@ -114,10 +172,10 @@ export default function TeamDetail() {
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">TEAM LEADER</p>
                                     <div className="bg-blue-50/50 rounded-xl p-4 flex items-center justify-between border-0">
                                         <div className="flex items-center gap-3">
-                                            <AvatarInitials initials="AR" bgClass="bg-blue-600" textClass="text-white" />
+                                            <AvatarInitials initials={getInitials(leaderName)} bgClass="bg-blue-600" textClass="text-white" />
                                             <div>
-                                                <p className="font-semibold text-slate-900 text-sm">Alex Rivera</p>
-                                                <p className="text-xs text-slate-500">alex.rivera@agentmail.com</p>
+                                                <p className="font-semibold text-slate-900 text-sm">{leaderName}</p>
+                                                <p className="text-xs text-slate-500">{leaderEmail}</p>
                                             </div>
                                         </div>
                                         <Badge variant="secondary" className="bg-blue-100 text-blue-700 hover:bg-blue-100 font-medium text-[10px] uppercase border-none border-0 shadow-none ring-0">
@@ -130,15 +188,11 @@ export default function TeamDetail() {
                                 <div className="p-6 border-0 pt-0">
                                     <div className="flex justify-between items-center mb-4 mt-6">
                                         <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">TEAM MEMBERS</p>
-                                        <span className="text-xs text-slate-500 font-medium">3 Collaborators</span>
+                                        <span className="text-xs text-slate-500 font-medium">{memberList.length} Collaborators</span>
                                     </div>
 
                                     <div className="space-y-4">
-                                        {[
-                                            { initials: "SC", name: "Sarah Chen", handle: "@sarahchen", color: "bg-emerald-100", text: "text-emerald-700" },
-                                            { initials: "DK", name: "Daniyal Kim", handle: "@daniyalkim", color: "bg-amber-100", text: "text-amber-700" },
-                                            { initials: "PS", name: "Priya Sharma", handle: "@priyasharma", color: "bg-purple-100", text: "text-purple-700" },
-                                        ].map((member, i) => (
+                                        {memberList.map((member: TeamMemberItem, i: number) => (
                                             <div key={i} className="flex items-center gap-3">
                                                 <AvatarInitials initials={member.initials} bgClass={member.color} textClass={member.text} />
                                                 <div>
@@ -306,5 +360,18 @@ export default function TeamDetail() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function TeamDetail() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen bg-slate-50/50 flex items-center justify-center p-6 text-slate-500">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-600 mr-2" />
+                <span>Loading team details...</span>
+            </div>
+        }>
+            <TeamDetailContent />
+        </Suspense>
     );
 }

@@ -2,7 +2,11 @@
 import { Modal } from "@/components/ui/modal"
 import { primaryLinkClass } from "@/components/ui/page-primitives"
 import type { Competition } from "@/features/competitions/types"
-import { fetchCompetitions, fetchUserDashboard, getStoredToken } from "@/lib/competitions-api"
+import {
+  fetchCompetitions,
+  fetchUserDashboard,
+  getStoredToken,
+} from "@/lib/competitions-api"
 import { useQuery } from "@tanstack/react-query"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import { useSiteActions } from "@/components/layout/site-actions"
@@ -13,9 +17,7 @@ import { CirclePlus, Search } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
-import {
-  dashboardProfile,
-} from "../data/dashboard-fixtures"
+import { dashboardProfile } from "../data/dashboard-fixtures"
 import {
   filterDashboardCompetitions,
   getDashboardCounts,
@@ -87,10 +89,16 @@ export function ParticipantDashboard({
         pitch: siteProfile.pitch || dashboardProfile.pitch,
         skills: siteProfile.skills
           .slice(0, 3)
-          .map((skill: { name: string; level?: string }) => `${skill.name} [${skill.level || "Intermediate"}]`),
+          .map(
+            (skill: { name: string; level?: string }) =>
+              `${skill.name} [${skill.level || "Intermediate"}]`
+          ),
       }
     : dashboardProfile
   function handleAction(entry: DashboardCompetition) {
+    if (entry.pending && entry.role !== "lead") {
+      return
+    }
     if (entry.source === "local" && entry.competitionSlug) {
       router.push(
         entry.pending
@@ -219,7 +227,8 @@ export function ParticipantDashboard({
                 {selected.poolLabel}
               </p>
               <p className="mt-2 text-2xl font-bold">
-                {formatMoney(selected.amountUsd)} {selected.currency}
+                {selected.tokenPrizeFormatted ||
+                  `${formatMoney(selected.amountUsd)} ${selected.currency}`}
               </p>
             </div>
             <p className="text-sm leading-6 text-muted-foreground">
@@ -235,15 +244,19 @@ export function ParticipantDashboard({
               <Button variant="secondary" onClick={() => setSelected(null)}>
                 Close
               </Button>
-              {selected.phase === "submission" && selected.competitionSlug && (
-                <Link
-                  className={primaryLinkClass}
-                  href={routes.workspace(selected.id || selected.competitionSlug)}
-                  onClick={() => setSelected(null)}
-                >
-                  Open Workspace
-                </Link>
-              )}
+              {selected.phase === "submission" &&
+                selected.competitionSlug &&
+                !(selected.pending && selected.role !== "lead") && (
+                  <Link
+                    className={primaryLinkClass}
+                    href={routes.workspace(
+                      selected.id || selected.competitionSlug
+                    )}
+                    onClick={() => setSelected(null)}
+                  >
+                    Open Workspace
+                  </Link>
+                )}
             </div>
           </>
         )}

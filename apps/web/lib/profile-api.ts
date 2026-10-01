@@ -54,33 +54,6 @@ const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
 
-export async function getMyProfile(token: string): Promise<ApiProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/profiles/me`, {
-    method: "GET",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "Cache-Control": "no-cache",
-    },
-    cache: "no-store",
-  })
-
-  if (!response.ok) {
-    const errorText = await response.text()
-    let errorMessage = `Failed to get profile (${response.status})`
-    try {
-      const parsed = JSON.parse(errorText)
-      if (parsed.message) {
-        errorMessage += `: ${Array.isArray(parsed.message) ? parsed.message.join(", ") : parsed.message}`
-      }
-    } catch {
-      errorMessage += `: ${errorText.slice(0, 150)}`
-    }
-    throw new Error(errorMessage)
-  }
-
-  return response.json()
-}
-
 export async function updateMyProfile(
   token: string,
   payload: UpdateProfilePayload

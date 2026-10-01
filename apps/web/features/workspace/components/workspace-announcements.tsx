@@ -1,12 +1,18 @@
 "use client"
+import { useEffect, useState } from "react"
 import { FileBadge, LockKeyhole } from "lucide-react"
 import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
 import { useSiteActions } from "@/components/layout/site-actions"
 
 export function WorkspaceAnnouncements() {
+  const [mounted, setMounted] = useState(false)
   const { connected } = useSiteActions()
 
-  if (!connected) return null
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  if (!mounted || !connected) return null
 
   return (
     <Panel>
