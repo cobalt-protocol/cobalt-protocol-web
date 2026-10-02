@@ -1607,3 +1607,71 @@ export async function submitTeamProjectSubmissionApi(
   }
 }
 
+export interface ApiPrizeWinner {
+  id: string
+  winner_id?: string | number | null
+  category: string
+  amount: string | number
+  certificate_cid?: string | null
+  competition_id: string
+  created_at?: string
+  updated_at?: string | null
+  deleted_at?: string | null
+  winner?: {
+    id: string
+    wallet_address: string
+    user_id: string
+    prize_winner_id: string
+    user?: {
+      id: string
+      wallet_address: string
+      username?: string | null
+      email?: string | null
+      location?: string | null
+      institution?: string | null
+    } | null
+  } | null
+}
+
+export interface ApiPrizeWinnersResponse {
+  data: ApiPrizeWinner[] | null
+  message: string
+  errors: any
+}
+
+export async function fetchPrizeWinnersByCompetitionId(
+  id: string,
+  token?: string | null
+): Promise<ApiPrizeWinner[]> {
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (authToken) {
+      headers["Authorization"] = authToken.startsWith("Bearer ")
+        ? authToken
+        : `Bearer ${authToken}`
+    }
+
+    const res = await fetch(
+      `${API_BASE_URL}/competitions/${encodeURIComponent(id)}/prize-winners`,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }
+    )
+
+    if (!res.ok) {
+      return []
+    }
+
+    const json: ApiPrizeWinnersResponse = await res.json()
+    return json.data || []
+  } catch {
+    return []
+  }
+}
+

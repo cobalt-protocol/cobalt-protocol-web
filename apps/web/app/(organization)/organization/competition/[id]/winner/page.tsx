@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAccount } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
-import { fetchApiMe, getStoredToken } from '@/lib/competitions-api';
+import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchAllTeamsByCompetitionId } from '@/lib/competitions-api';
 import { ChevronRight, Loader2 } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
@@ -14,29 +14,23 @@ const ChevronDownIcon = () => (
     </svg>
 );
 
-const InfoIcon = () => (
-    <svg className="w-5 h-5 text-blue-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
-    </svg>
-);
-
-const WarningIcon = () => (
-    <svg className="w-5 h-5 text-red-500 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path>
-    </svg>
-);
-
 const CheckCircleIcon = () => (
-    <svg className="w-4 h-4 ml-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path>
     </svg>
 );
+
+interface CategoryItem {
+    id: string | number;
+    name: string;
+    teamId: number | string;
+}
 
 export default function DetermineWinner() {
     const router = useRouter();
     const params = useParams();
     const compId = (params?.id as string) || '';
-    const { isConnected } = useAccount();
+    const { isConnected, status: accountStatus } = useAccount();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
 
@@ -51,19 +45,74 @@ export default function DetermineWinner() {
         enabled: Boolean(storedToken),
     });
 
+    const { data: prizeWinners, isLoading: isLoadingPrizeWinners } = useQuery({
+        queryKey: ["prize-winners", compId, storedToken],
+        queryFn: () => fetchPrizeWinnersByCompetitionId(compId, storedToken || getStoredToken()),
+        enabled: Boolean(compId && storedToken),
+    });
+
+    const { data: allTeams = [], isLoading: isLoadingTeams } = useQuery({
+        queryKey: ["competition-all-teams", compId, storedToken],
+        queryFn: () => fetchAllTeamsByCompetitionId(compId, storedToken || getStoredToken()),
+        enabled: Boolean(compId && storedToken),
+    });
+
+    // wagmi sempat berstatus "connecting"/"reconnecting" sesaat saat hard
+    // refresh sebelum wallet selesai di-restore. Jika kita menilai role di
+    // tengah proses ini, isConnected masih false dan organizer yang sah akan
+    // terlempar kembali ke halaman competition.
+    const isWagmiLoading =
+        accountStatus === "connecting" || accountStatus === "reconnecting";
+
     const isOrganizationRole = Boolean(
         isConnected &&
         storedToken &&
         (meUser?.role === "organization" || meUser?.role === "organizer")
     );
 
-    const isChecking = !hasCheckedToken || (Boolean(storedToken) && isLoadingMe);
+    const isChecking =
+        !hasCheckedToken ||
+        (Boolean(storedToken) && isLoadingMe) ||
+        (Boolean(storedToken) && isWagmiLoading);
 
     useEffect(() => {
         if (!isChecking && !isOrganizationRole) {
             router.replace(compId ? `/organization/competition/${compId}` : '/organization/competition');
         }
     }, [isChecking, isOrganizationRole, compId, router]);
+
+    const [categories, setCategories] = useState<CategoryItem[]>([]);
+    const [winnerSet, setWinnerSet] = useState<Record<string | number, boolean>>({});
+
+    useEffect(() => {
+        if (prizeWinners) {
+            if (prizeWinners.length > 0) {
+                const mappedCategories: CategoryItem[] = prizeWinners.map((pw, index) => {
+                    const assignedTeamId = pw.winner_id
+                        ? String(pw.winner_id)
+                        : pw.winner?.id
+                        ? String(pw.winner.id)
+                        : (allTeams[index]?.id || allTeams[0]?.id || '');
+                    return {
+                        id: pw.id,
+                        name: pw.category,
+                        teamId: assignedTeamId,
+                    };
+                });
+                setCategories(mappedCategories);
+
+                const initialWinnerSet: Record<string | number, boolean> = {};
+                prizeWinners.forEach((pw) => {
+                    if (pw.winner || pw.winner_id) {
+                        initialWinnerSet[pw.id] = true;
+                    }
+                });
+                setWinnerSet((prev) => ({ ...initialWinnerSet, ...prev }));
+            } else {
+                setCategories([]);
+            }
+        }
+    }, [prizeWinners, allTeams]);
 
     if (isChecking || !isOrganizationRole) {
         return (
@@ -73,12 +122,16 @@ export default function DetermineWinner() {
             </div>
         );
     }
-    // Data dummy untuk kategori
-    const categories = [
-        { id: 1, name: '1st Place', team: 'Team SwarmSynthetic' },
-        { id: 2, name: '2nd Place', team: 'AgentZeroLabs' },
-        { id: 3, name: '3rd Place', team: 'Nexus Vector' },
-    ];
+
+    const handleAssignTeam = (categoryId: string | number, teamId: number | string) => {
+        setCategories((prev) =>
+            prev.map((c) => (String(c.id) === String(categoryId) ? { ...c, teamId } : c))
+        );
+    };
+
+    const handleSetWinner = (categoryId: string | number) => {
+        setWinnerSet((prev) => ({ ...prev, [categoryId]: true }));
+    };
 
     return (
         <div className="w-full bg-[#F8F9FF] py-10 font-sans text-slate-800">
@@ -96,119 +149,110 @@ export default function DetermineWinner() {
 
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Determine Winner</h1>
                     <p className="text-slate-500 mt-1 text-sm">
-                        Assign winning categories to participating teams and finalize the competition results.
+                        Assign a winning team to each competition category.
                     </p>
                 </div>
 
-            {/* Grid Layout Utama */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Winner Selection */}
+            <div className="bg-white rounded-xl p-6">
 
-                {/* Kolom Kiri: Winner Selection (Mengambil 2 span kolom) */}
-                <div className="lg:col-span-2 bg-white rounded-xl p-6">
-
-                    <div className="flex justify-between items-start mb-6">
-                        <div>
-                            <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
-                                Configuration Phase
-                            </p>
-                            <h2 className="text-xl font-bold text-slate-800">Winner Selection</h2>
-                            <p className="text-sm text-slate-500 mt-1">
-                                Select the winning team for each competition category.
-                            </p>
-                        </div>
-                        <span className="text-xs font-medium text-slate-400 bg-slate-50 px-3 py-1 rounded-full">
-                            6 Available Categories
-                        </span>
+                <div className="flex justify-between items-start mb-6">
+                    <div>
+                        <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
+                            Configuration Phase
+                        </p>
+                        <h2 className="text-xl font-bold text-slate-800">Winner Selection</h2>
+                        <p className="text-sm text-slate-500 mt-1">
+                            Select the winning team for each competition category.
+                        </p>
                     </div>
-
-                    <div className="space-y-4">
-                        {categories.map((category) => (
-                            <div key={category.id} className="bg-[#f8f9ff] rounded-lg p-5 flex flex-col md:flex-row gap-4">
-
-                                {/* Dropdown Kategori */}
-                                <div className="flex-1">
-                                    <label className="block text-xs font-semibold text-slate-500 mb-2">
-                                        Category
-                                    </label>
-                                    <div className="relative">
-                                        <select className="w-full appearance-none bg-white border-0 text-slate-700 py-2.5 px-4 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-none">
-                                            <option>{category.name}</option>
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
-                                            <ChevronDownIcon />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Dropdown Tim */}
-                                <div className="flex-1">
-                                    <label className="block text-xs font-semibold text-slate-500 mb-2">
-                                        Assigned Winning Team
-                                    </label>
-                                    <div className="relative">
-                                        <select className="w-full appearance-none bg-white border-0 text-slate-700 py-2.5 px-4 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer shadow-none">
-                                            <option>{category.team}</option>
-                                        </select>
-                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
-                                            <ChevronDownIcon />
-                                        </div>
-                                    </div>
-                                </div>
-
-                            </div>
-                        ))}
-                    </div>
+                    <span className="text-xs font-medium text-slate-400 bg-slate-50 px-3 py-1 rounded-full">
+                        {categories.length} Available Categories
+                    </span>
                 </div>
 
-                {/* Kolom Kanan: Finalize & Settlement */}
-                <div className="lg:col-span-1">
-                    <div className="bg-white rounded-xl p-6 sticky top-8">
-
-                        <div className="flex items-center mb-6">
-                            <InfoIcon />
-                            <h3 className="text-lg font-bold text-slate-800">Finalize & Settlement</h3>
-                        </div>
-
-                        {/* Kotak Peringatan Merah */}
-                        <div className="bg-[#FFF5F5] rounded-lg p-4 mb-6">
-                            <div className="flex items-start">
-                                <WarningIcon />
-                                <div>
-                                    <h4 className="text-sm font-bold text-red-700 mb-1">
-                                        Irreversible Action Warning
-                                    </h4>
-                                    <p className="text-xs text-red-600 leading-relaxed">
-                                        Once the results are finalized, the winner information cannot be edited. Please review all selections before confirming.
-                                    </p>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Informasi Apa yang Terjadi */}
-                        <div className="bg-[#F8FAFC] rounded-lg p-4 mb-8">
-                            <h4 className="text-xs font-bold text-slate-700 mb-2">
-                                What happens after confirmation:
-                            </h4>
-                            <p className="text-xs text-slate-500 leading-relaxed">
-                                The competition results are finalized and winners are announced. Prize and certificate claims become available according to the competition timeline. Result cannot be edited.
-                            </p>
-                        </div>
-
-                        {/* Tombol Aksi */}
-                        <div className="flex items-center gap-3">
-                            <button className="flex-1 bg-white text-slate-600 font-medium text-xs py-2.5 px-3 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap">
-                                Save Draft
-                            </button>
-                            <button className="flex-1 bg-[#2563EB] text-white font-medium text-xs py-2.5 px-3 rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center whitespace-nowrap gap-1">
-                                Confirm & Finalize
-                                <CheckCircleIcon />
-                            </button>
-                        </div>
-
-                    </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full border-collapse text-left text-sm">
+                        <thead>
+                            <tr className="border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                <th className="py-3 pr-4 font-semibold">Category</th>
+                                <th className="py-3 pr-4 font-semibold">Assigned Winning Team</th>
+                                <th className="py-3 text-right font-semibold">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {isLoadingPrizeWinners ? (
+                                <tr>
+                                    <td colSpan={3} className="py-8 text-center text-slate-400">
+                                        <Loader2 className="w-5 h-5 animate-spin inline mr-2 text-blue-600" />
+                                        <span>Loading categories...</span>
+                                    </td>
+                                </tr>
+                            ) : categories.length === 0 ? (
+                                <tr>
+                                    <td colSpan={3} className="py-8 text-center text-slate-400">
+                                        No categories found.
+                                    </td>
+                                </tr>
+                            ) : (
+                                categories.map((category) => {
+                                    const isSet = Boolean(winnerSet[category.id]);
+                                    return (
+                                        <tr key={category.id} className="border-b border-slate-100 last:border-0">
+                                            <td className="py-4 pr-4">
+                                                <span className="font-semibold text-slate-800">{category.name}</span>
+                                            </td>
+                                            <td className="py-4 pr-4">
+                                                <div className="relative max-w-xs">
+                                                    <select
+                                                        value={category.teamId}
+                                                        onChange={(e) => handleAssignTeam(category.id, e.target.value)}
+                                                        className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 px-4 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                                                    >
+                                                        {isLoadingTeams ? (
+                                                            <option value="" disabled>Loading teams...</option>
+                                                        ) : allTeams.length === 0 ? (
+                                                            <option value="" disabled>No teams found</option>
+                                                        ) : (
+                                                            allTeams.map((team) => (
+                                                                <option key={team.id} value={team.id}>
+                                                                    {team.name}
+                                                                </option>
+                                                            ))
+                                                        )}
+                                                    </select>
+                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
+                                                        <ChevronDownIcon />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 text-right">
+                                                {isSet ? (
+                                                    <button
+                                                        disabled
+                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-4 py-2.5 text-xs font-medium text-emerald-700 cursor-default"
+                                                    >
+                                                        Winner Set
+                                                        <CheckCircleIcon />
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        onClick={() => handleSetWinner(category.id)}
+                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                                                    >
+                                                        Set Winner
+                                                    </button>
+                                                )}
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            )}
+                        </tbody>
+                    </table>
                 </div>
-
             </div>
+
             </div>
         </div>
     );

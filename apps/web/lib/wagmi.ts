@@ -78,6 +78,10 @@ export const wagmiConfig = createConfig(
     appUrl: "https://cobalt.life",
     appIcon: "/icon.webp",
     walletConnectProjectId: process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID || "c4f79cc821944d9680842e34466bfb00",
+    // ConnectKit ships an "Aave Account" wallet connector (enableAaveAccount defaults to true),
+    // which eagerly instantiates the @aave/account SDK and throws EIP1193 connection-timeout
+    // rejections on page load. Disable it — we don't need the Aave Account wallet here.
+    enableAaveAccount: false,
     chains: [botChainTestnet],
     transports: {
       [botChainTestnet.id]: http(),
