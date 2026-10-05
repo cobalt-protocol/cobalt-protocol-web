@@ -26,6 +26,7 @@ export interface ApiCompetitionWinner {
 
 export interface ApiCompetition {
   id: string
+  competition_id?: string | null
   slug?: string | null
   tx_hash?: string | null
   name: string
@@ -42,6 +43,8 @@ export interface ApiCompetition {
   pirze_certificate_claim: string
   certificate_cid?: string | null
   guidebook_cid?: string | null
+  fee?: string | number | null
+  fee_token_address?: string | null
   created_at: string
   prize_winners?: ApiCompetitionWinner[]
   user_id?: string | null
@@ -57,6 +60,91 @@ const rawApiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001"
 const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
+
+export type ParticipantCertificateSignatureData = {
+  signature?: string | null
+  cid?: string | null
+  certificate_cid?: string | null
+  uri?: string | null
+  metadata?: {
+    title_project: string
+    description_project: string | null
+    submission_link: string
+    document_cid: string
+    document_uri: string | null
+    title: string
+    description: string
+    image: string
+    certificate_cid: string
+  } | null
+  id?: string
+  team_id?: string
+  competition_id?: string
+  user_id?: string
+}
+
+export async function fetchParticipantCertificateSignature(
+  competitionId: string,
+  teamId: string,
+  token?: string | null,
+): Promise<{ data?: ParticipantCertificateSignatureData | null; message?: string }> {
+  if (!teamId) throw new Error("teamId is required to fetch participant certificate signature")
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    throw new Error("You must be authenticated to mint a participant certificate.")
+  }
+
+  const response = await fetch(
+    `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-participant/${encodeURIComponent(teamId)}`,
+    {
+      method: "GET",
+      headers: {
+        Authorization: authToken.startsWith("Bearer ")
+          ? authToken
+          : `Bearer ${authToken}`,
+        "Content-Type": "application/json",
+      },
+      cache: "no-store",
+    },
+  )
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(
+      payload?.message ||
+        `Failed to fetch participant certificate signature (${response.status})`,
+    )
+  }
+
+  return payload
+}
+
+export async function fetchWinnerCertificateSignature(
+  competitionId: string,
+  winnerId?: string | null,
+  token?: string | null,
+): Promise<{ data?: { signature?: string | null; winner_id?: string | null; uri?: string | null }; message?: string }> {
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    throw new Error("You must be authenticated to mint a winner certificate.")
+  }
+  const path = winnerId
+    ? `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner/${encodeURIComponent(winnerId)}`
+    : `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner`
+  const response = await fetch(path, {
+    method: "GET",
+    headers: {
+      Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
+      "Content-Type": "application/json",
+    },
+    cache: "no-store",
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    throw new Error(payload?.message || `Failed to fetch winner certificate signature (${response.status})`)
+  }
+  return payload
+}
 
 export function parse18DecimalAmount(
   val?: string | number | null,
@@ -202,6 +290,7 @@ export function mapApiCompetitionToCompetition(
 
   return {
     id: apiComp.id,
+    onchainCompetitionId: apiComp.competition_id ?? null,
     slug,
     txHash: formattedTxHash,
     tx_hash: formattedTxHash,
@@ -289,6 +378,10 @@ export function mapApiCompetitionToCompetition(
       ? [apiComp.requirement]
       : ["Follow Cobalt Protocol rules."],
     guidebookUrl,
+    certificate_cid: apiComp.certificate_cid ?? null,
+    pirze_certificate_claim: apiComp.pirze_certificate_claim ?? null,
+    fee: apiComp.fee ?? null,
+    fee_token_address: apiComp.fee_token_address ?? null,
   }
 }
 
@@ -1674,4 +1767,3 @@ export async function fetchPrizeWinnersByCompetitionId(
     return []
   }
 }
-

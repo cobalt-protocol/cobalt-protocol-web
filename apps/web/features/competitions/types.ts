@@ -29,6 +29,7 @@ export interface JudgingCriterion {
 }
 export interface Competition {
   id: string
+  onchainCompetitionId?: string | null
   slug: string
   txHash?: string | null
   tx_hash?: string | null
@@ -54,6 +55,10 @@ export interface Competition {
   judgingCriteria: readonly JudgingCriterion[]
   rules: readonly string[]
   guidebookUrl: string | null
+  certificate_cid?: string | null
+  pirze_certificate_claim?: string | null
+  fee?: string | number | null
+  fee_token_address?: string | null
 }
 export type CompetitionSort =
   "prize-desc" | "deadline-asc" | "participants-desc"

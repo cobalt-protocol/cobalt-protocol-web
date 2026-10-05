@@ -50,7 +50,8 @@ interface SiteActions {
   register: (
     competition: RegistrationCompetition,
     profileOverride?: BuilderProfile
-  ) => void
+  ) => Promise<void>
+  refetchUser?: () => Promise<BuilderProfile | null>
   nonce?: string | null
   nonceMessage?: string | null
   isGeneratingNonce?: boolean
@@ -114,7 +115,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       for (const k of keysToRemove) {
         try {
           window.localStorage.removeItem(k)
-        } catch {}
+        } catch { }
       }
     }
   }, [])
@@ -202,7 +203,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
         try {
           setConnectKitOpen(false)
-        } catch {}
+        } catch { }
 
         setIsGeneratingNonce(true)
 
@@ -435,7 +436,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         for (const k of keysToRemove) {
           try {
             window.localStorage.removeItem(k)
-          } catch {}
+          } catch { }
         }
       }
 
@@ -502,15 +503,43 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       }
     }
   }
-  function register(
+  const refetchUser = useCallback(async (): Promise<BuilderProfile | null> => {
+    const token =
+      sessionToken ??
+      (typeof window !== "undefined"
+        ? window.localStorage.getItem("cobalt:access_token")
+        : null)
+    if (!token) return null
+
+    try {
+      const res = await getMe(token)
+      if (res.data?.user) {
+        const u = res.data.user
+        setUser(u)
+        if (u.role) setUserRole(u.role)
+        if (u.wallet_address) setAuthenticatedAddress(u.wallet_address)
+        return mapApiProfileToBuilderProfile(u)
+      }
+    } catch (err) {
+      console.warn("Could not refetch user profile from API:", err)
+    }
+
+    return null
+  }, [sessionToken])
+
+  async function register(
     competition: RegistrationCompetition,
     profileOverride?: BuilderProfile
   ) {
-    continueRegistration(
-      competition,
-      connected,
-      profileOverride ?? profile
-    )
+    // Refetch the latest profile ("me" API) on register click so the
+    // registration step is decided against fresh server-side profile data.
+    let currentProfile = profileOverride ?? profile
+    if (!profileOverride) {
+      const freshProfile = await refetchUser()
+      if (freshProfile) currentProfile = freshProfile
+    }
+
+    continueRegistration(competition, connected, currentProfile)
   }
   function continueRegistration(
     competition: RegistrationCompetition,
@@ -537,13 +566,13 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       return "Could not save this team. You may already have a team here, or browser storage is unavailable."
     navigate(
       redirectTo ??
-        (membership.status === "active"
-          ? routes.workspace(
-              membership.teamId ||
-                membership.competitionId ||
-                membership.competitionSlug
-            )
-          : routes.dashboard)
+      (membership.status === "active"
+        ? routes.workspace(
+          membership.teamId ||
+          membership.competitionId ||
+          membership.competitionSlug
+        )
+        : routes.dashboard)
     )
     return null
   }
@@ -557,9 +586,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
     const parsedSkills = input.requirements
       ? input.requirements
-          .split(/[,;\n]/)
-          .map((s) => s.trim())
-          .filter(Boolean)
+        .split(/[,;\n]/)
+        .map((s) => s.trim())
+        .filter(Boolean)
       : []
     const skillsList = Array.from(
       new Set([...(input.skills || []), ...parsedSkills])
@@ -596,12 +625,12 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         typeof apiErr?.message === "string"
           ? apiErr.message
           : typeof apiErr === "string"
-          ? apiErr
-          : Array.isArray(apiErr?.message)
-          ? apiErr.message.join(", ")
-          : typeof apiErr?.message === "object"
-          ? JSON.stringify(apiErr.message)
-          : String(apiErr || "Failed to create team on server.")
+            ? apiErr
+            : Array.isArray(apiErr?.message)
+              ? apiErr.message.join(", ")
+              : typeof apiErr?.message === "object"
+                ? JSON.stringify(apiErr.message)
+                : String(apiErr || "Failed to create team on server.")
       console.warn("Backend API create team notice/error:", errMsg)
       if (sessionToken) {
         return errMsg || "Failed to create team on server."
@@ -638,6 +667,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         switchNetwork: handleSwitchNetwork,
         disconnectWallet: handleDisconnectWallet,
         register,
+        refetchUser,
         joinTeam,
         nonce,
         nonceMessage,

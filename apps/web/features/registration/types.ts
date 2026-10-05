@@ -3,7 +3,7 @@ import type { Competition } from "@/features/competitions/types"
 import type { ApiTeam } from "@/lib/competitions-api"
 export type RegistrationCompetition = Pick<
   Competition,
-  "id" | "slug" | "title" | "maxTeamSize"
+  "id" | "slug" | "title" | "maxTeamSize" | "fee" | "fee_token_address"
 >
 export type RegistrationDialog =
   | { kind: "wallet"; competition: RegistrationCompetition | null; profileOverride?: BuilderProfile | null }

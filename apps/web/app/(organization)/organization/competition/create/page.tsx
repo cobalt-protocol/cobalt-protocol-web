@@ -442,7 +442,7 @@ export default function CreateCompetition() {
 
     const competitionContractAddress = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT ||
         process.env.COMPETITION_CONTRACT ||
-        '0x2938eabf29e9F7ecaff7E11ca9794DFa904e78D7') as `0x${string}`;
+        '0xb82F97deF35a9fe438ceB41f4fB5145514b18069') as `0x${string}`;
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
 

@@ -139,7 +139,13 @@ export function CompetitionWorkspace({
         />
         <IncomingJoinRequests teamId={teamId} />
         <SubmissionForm competitionId={competition.id} teamId={teamId} />
-        <WorkspaceAnnouncements />
+        <WorkspaceAnnouncements
+          competitionId={competition.id}
+          onchainCompetitionId={competition.onchainCompetitionId}
+          certificateCid={competition.certificate_cid}
+          pirzeCertificateClaim={competition.pirze_certificate_claim}
+          teamId={teamId}
+        />
       </div>
     </PageContainer>
   )

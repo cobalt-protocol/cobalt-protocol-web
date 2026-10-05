@@ -117,7 +117,9 @@ export function OrganizationCompetitionDetailView({
   });
 
   useEffect(() => {
-    if (teamsResult && [404, 401, 403].includes(teamsResult.status)) {
+    // A 404 simply means there are no teams for this competition yet, so we
+    // stay on this page and render the empty state instead of redirecting.
+    if (teamsResult && [401, 403].includes(teamsResult.status)) {
       router.push(routes.competitions);
     }
   }, [teamsResult, router]);
@@ -171,7 +173,7 @@ export function OrganizationCompetitionDetailView({
     ? `${startDateLabel} - ${endDateLabel}`
     : "Apr 20 - May 05, 2025";
 
-  const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0x2938eabf29e9F7ecaff7E11ca9794DFa904e78D7';
+  const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0xb82F97deF35a9fe438ceB41f4fB5145514b18069';
   const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0x501c3E1eB0059609Df8DE7bf06e70598e68F2d97';
 
   const explorerBaseUrl = 'https://scan.bohr.life';
