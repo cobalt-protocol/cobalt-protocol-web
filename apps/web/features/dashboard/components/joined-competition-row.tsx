@@ -7,10 +7,17 @@ import {
   Wallet,
   Zap,
 } from "lucide-react"
-import { useAccount } from "wagmi"
+import { useAccount, useChainId } from "wagmi"
+import { useQuery } from "@tanstack/react-query"
 import type { DashboardCompetition, DashboardPhase } from "../types"
 import { phaseBadges } from "../lib/dashboard-selectors"
 import { formatMoney } from "@/lib/format"
+import { useDynamicTokenInfo } from "@/lib/hooks/use-dynamic-token"
+import { useCompetitionTokenPrize } from "@/lib/hooks/use-competition-token-prize"
+import { convertTokenOnChain } from "@/lib/token-convert"
+import { useMemo } from "react"
+import { fetchTokenPrizeByCompetitionId, formatTokenPrize } from "@/lib/competitions-api"
+
 const phaseStyles: Record<
   DashboardPhase,
   { border: string; dot: string; button: string }
@@ -54,11 +61,11 @@ export function JoinedCompetitionRow({
   onAction: () => void
 }) {
   const { chain } = useAccount()
-  const rawTxHash =
+  const chainId = useChainId()
+  const txHash =
     competition.txHash ||
     competition.tx_hash ||
     "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-  const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`
   const explorerBaseUrl = (
     chain?.blockExplorers?.default?.url || "https://scan.bohr.life"
   ).replace(/\/$/, "")
@@ -75,11 +82,85 @@ export function JoinedCompetitionRow({
           : ArrowRight
   const OrganizerIcon = competition.phase === "closed" ? Blocks : Zap
 
-  const prizeLabel =
-    competition.tokenPrizeFormatted ||
-    `${formatMoney(competition.amountUsd)} ${competition.currency}`
+  // Prize Pool Capacity on-chain dari GET /api/v1/chains/:chainId/teams -> competition.prize_deposits[0]
+  // Spec: hanya prize_deposits[0].amount + token_address (single entry, not sum), fallback 0 jika array kosong
+  // Dikonsumsi via DashboardCompetition.prizeDeposits[0] yang diset di dashboard-selectors dari team.competition.prize_deposits[0]
+  const prizeDeposits = (competition as any).prizeDeposits as import("@/lib/competitions-api").ApiPrizeDeposit[] | null | undefined
+  const prizeDepositsTotalRaw = (competition as any).prizeDepositsTotalRaw as string | null | undefined
+  // Prize Pool Capacity = prize_deposits[0].amount; token from [0].token_address (USDT 6 decimals), not fee_token fallback
+  const hasPrizeDeposits = Boolean(prizeDeposits && prizeDeposits.length > 0 && prizeDepositsTotalRaw)
+  const prizeDepositsTokenAddress = hasPrizeDeposits
+    ? (prizeDeposits![0]?.token_address || prizeDeposits!.find((d) => Boolean(d.token_address))?.token_address || (competition.tokenAddress as string | null) || null)
+    : null
 
-  const isDisabled = Boolean(competition.pending && competition.role !== "lead")
+  const compIdOrSlug = competition.competitionId || competition.competitionSlug || (competition.source === "local" ? competition.id : null)
+
+  const onchainCompId = competition.rawTokenPrize?.onchain_competition_id || (competition as any).onchainCompetitionId || (typeof compIdOrSlug === "string" && /^\d+$/.test(compIdOrSlug) ? compIdOrSlug : null);
+  const { data: fetchedTokenPrize } = useCompetitionTokenPrize(onchainCompId);
+
+  const tokenPrize = competition.rawTokenPrize || fetchedTokenPrize
+  // Prioritas: prize_deposits amount+token_address (on-chain) > tokenPrize fallback
+  const primaryRaw = hasPrizeDeposits ? prizeDepositsTotalRaw! : (tokenPrize?.total_prize ? String(tokenPrize.total_prize) : null)
+  const primaryTokenAddress = hasPrizeDeposits
+    ? prizeDepositsTokenAddress
+    : (competition.tokenAddress || tokenPrize?.token_address || null)
+  const tokenAddressToFetch = primaryTokenAddress
+  const { decimals, symbol: dynamicSymbol } = useDynamicTokenInfo(tokenAddressToFetch)
+
+  const { data: convertedTotalPrize } = useQuery({
+    queryKey: ["convert-total-prize-row", competition.id, tokenAddressToFetch, primaryRaw],
+    queryFn: async () => {
+      if (!primaryRaw) return null
+      return await convertTokenOnChain(
+        (tokenAddressToFetch || "0x0000000000000000000000000000000000000000") as string,
+        primaryRaw
+      )
+    },
+    enabled: Boolean(primaryRaw),
+    staleTime: 60_000,
+  })
+
+  const { amountDisplay, symbolDisplay } = useMemo(() => {
+    if (convertedTotalPrize) {
+      return {
+        amountDisplay: convertedTotalPrize.convertedAmount,
+        symbolDisplay: convertedTotalPrize.symbol,
+      }
+    }
+
+    // Jika prize_deposits ada, tokenPrizeFormatted sudah = formatTokenPrize(prizeDepositsTotalRaw, prizeDepositsTokenAddress) via dashboard-selectors
+    // Jadi fallback ini sudah on-chain-aware (via formatTokenPrize dengan decimals/symbol dinamis)
+    let formatted = competition.tokenPrizeFormatted || `${formatMoney(competition.amountUsd)} ${competition.currency}`
+    
+    if (hasPrizeDeposits && prizeDepositsTotalRaw) {
+      formatted = formatTokenPrize(
+        prizeDepositsTotalRaw,
+        prizeDepositsTokenAddress,
+        chain?.nativeCurrency?.symbol,
+        decimals,
+        dynamicSymbol || undefined
+      )
+    } else if (tokenPrize && tokenPrize.total_prize !== undefined && tokenPrize.total_prize !== null) {
+      formatted = formatTokenPrize(
+        tokenPrize.total_prize,
+        tokenAddressToFetch,
+        chain?.nativeCurrency?.symbol,
+        decimals,
+        dynamicSymbol || (tokenPrize as any)?.symbol || (tokenPrize as any)?.token_symbol || undefined
+      )
+    }
+    
+    const lastSpaceIndex = formatted.lastIndexOf(" ")
+    if (lastSpaceIndex !== -1) {
+      return {
+        amountDisplay: formatted.slice(0, lastSpaceIndex),
+        symbolDisplay: formatted.slice(lastSpaceIndex + 1),
+      }
+    }
+    return { amountDisplay: formatted, symbolDisplay: "" }
+  }, [competition, tokenPrize, chain?.nativeCurrency?.symbol, decimals, dynamicSymbol, tokenAddressToFetch, convertedTotalPrize])
+
+  const isDisabled = Boolean(competition.pending)
 
   return (
     <article
@@ -130,9 +211,14 @@ export function JoinedCompetitionRow({
           {competition.poolLabel}
         </p>
         <p
-          className={`mt-1 text-xl font-extrabold tracking-tight ${competition.phase === "claim" ? "text-teal-800" : ""}`}
+          className={`mt-1 text-xl font-extrabold tracking-tight flex items-baseline gap-1.5 lg:justify-end ${competition.phase === "claim" ? "text-teal-800" : ""}`}
         >
-          {prizeLabel}
+          <span>{amountDisplay}</span>
+          {symbolDisplay && (
+            <span className={`text-[11px] font-medium ${competition.phase === "claim" ? "text-teal-700" : "text-muted-foreground"}`}>
+              {symbolDisplay}
+            </span>
+          )}
         </p>
         <button
           disabled={isDisabled}

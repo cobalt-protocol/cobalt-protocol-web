@@ -6,7 +6,7 @@ import {
 } from "@/lib/competitions-api"
 
 export async function getCompetitions(): Promise<readonly Competition[]> {
-  return fetchCompetitions()
+  return fetchCompetitions(968)
 }
 
 export async function getCompetitionById(
@@ -15,21 +15,12 @@ export async function getCompetitionById(
   if (!id) return undefined
 
   // 1. Direct fetch from NestJS API endpoint GET /api/v1/competitions/:id
-  const directComp = await fetchCompetitionById(id)
+  const directComp = await fetchCompetitionById(968, id)
   if (directComp) {
     return directComp
   }
 
-  // 2. Fallback: Search in overall competitions list (by ID or slug)
-  const competitions = await getCompetitions()
-  const exactMatch = competitions.find(
-    (competition) => competition.id === id || competition.slug === id
-  )
-  if (exactMatch) return exactMatch
-
-  // 3. Fallback exact case-insensitive match (by ID or slug)
-  const idLower = id.toLowerCase()
-  return competitions.find((c) => c.id.toLowerCase() === idLower || c.slug.toLowerCase() === idLower)
+  return undefined
 }
 
 export async function getCompetitionBySlug(
@@ -42,6 +33,7 @@ export async function getFeaturedCompetitions(): Promise<readonly Competition[]>
   const competitions = await getCompetitions()
   return competitions.slice(0, 3)
 }
+
 
 
 

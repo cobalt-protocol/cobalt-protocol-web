@@ -86,13 +86,13 @@ export function CreateTeamForm({
         <span className="flex justify-between gap-3">
           Team Name{" "}
           <span className="text-xs font-normal text-muted-foreground">
-            {input.name.length}/24 chars
+            {input.name.length}/30 chars
           </span>
         </span>
         <input
           autoComplete="off"
           required
-          maxLength={24}
+          maxLength={30}
           value={input.name}
           onChange={(event) => setInput({ ...input, name: event.target.value })}
           className={fieldClass + " mt-2 bg-secondary/60"}
@@ -121,31 +121,39 @@ export function CreateTeamForm({
                 icon: LockKeyhole,
               },
             ] as const
-          ).map(({ value, title, description, caption, icon: Icon }) => (
-            <label
-              key={value}
-              className="cursor-pointer rounded-2xl border border-transparent bg-secondary/60 p-4 has-[:checked]:border-primary has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary"
-            >
-              <span className="flex items-center gap-2">
-                <Icon size={20} className="text-primary" />
-                <strong className="text-sm">{title}</strong>
-                <input
-                  type="radio"
-                  name="visibility"
-                  value={value}
-                  checked={input.visibility === value}
-                  onChange={() => setInput({ ...input, visibility: value })}
-                  className="ml-auto size-4 accent-blue-600"
-                />
-              </span>
-              <span className="mt-3 block text-xs leading-6 text-muted-foreground">
-                {description}
-              </span>
-              <span className="mt-3 block text-xs text-teal-700">
-                {caption}
-              </span>
-            </label>
-          ))}
+          ).map(({ value, title, description, caption, icon: Icon }) => {
+            const isSelected = input.visibility === value
+            return (
+              <label
+                key={value}
+                onClick={() => setInput((prev) => ({ ...prev, visibility: value }))}
+                className={`cursor-pointer rounded-2xl border p-4 transition-all ${
+                  isSelected
+                    ? "border-primary bg-secondary/80 ring-1 ring-primary"
+                    : "border-transparent bg-secondary/60 hover:bg-secondary/75"
+                } has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-primary`}
+              >
+                <span className="flex items-center gap-2">
+                  <Icon size={20} className="text-primary" />
+                  <strong className="text-sm">{title}</strong>
+                  <input
+                    type="radio"
+                    name="visibility"
+                    value={value}
+                    checked={isSelected}
+                    onChange={() => setInput((prev) => ({ ...prev, visibility: value }))}
+                    className="ml-auto size-4 accent-blue-600"
+                  />
+                </span>
+                <span className="mt-3 block text-xs leading-6 text-muted-foreground">
+                  {description}
+                </span>
+                <span className="mt-3 block text-xs text-teal-700">
+                  {caption}
+                </span>
+              </label>
+            )
+          })}
         </div>
       </fieldset>
       <section className="mt-6 rounded-2xl bg-secondary/60 p-5">

@@ -4,9 +4,11 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAccount } from 'wagmi';
 import {
-  fetchTokenPrizeByCompetitionId,
   getTokenSymbol,
+  parse18DecimalAmount,
 } from '@/lib/competitions-api';
+import { useDynamicTokenInfo } from '@/lib/hooks/use-dynamic-token';
+import { useCompetitionTokenPrize } from '@/lib/hooks/use-competition-token-prize';
 import {
   Badge,
   Breadcrumbs,
@@ -14,7 +16,7 @@ import {
   Panel,
   SectionHeading,
 } from "@/components/ui/page-primitives";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 import { routes } from "@/lib/routes";
 import {
   Award,
@@ -27,9 +29,9 @@ import {
   Wifi,
 } from "lucide-react";
 import type { Competition } from "../types";
-import { getPrizeTotal } from "../lib/competition-selectors";
 import { CompetitionOverview } from "./competition-overview";
 import { CompetitionTimeline } from "./competition-timeline";
+import { convertTokenOnChain, type ConvertTokenResult } from '@/lib/token-convert';
 
 interface UserViewProps {
   competition: Competition;
@@ -43,18 +45,64 @@ export function UserCompetitionDetailView({
   const effectiveGuidebookUrl = guidebookUrl || competition.guidebookUrl;
   const { chain } = useAccount();
   const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
-  const competitionId = competition.id || competition.slug;
 
-  const { data: tokenPrizeData } = useQuery({
-    queryKey: ["competition-token-prize", competitionId],
-    queryFn: () => fetchTokenPrizeByCompetitionId(competitionId),
-    enabled: Boolean(competitionId),
-  });
+  const { data: tokenPrizeData } = useCompetitionTokenPrize(competition.onchainCompetitionId);
+
+  // Same vault source as Prize vault (homepage) and Total guaranteed prize:
+  // GET /api/v1/chains/<chain_id>/competitions[].prize_deposits[0] { token_address, amount }
+  // on-chain decimals/symbol via useDynamicTokenInfo + convertTokenOnChain
+  const vaultDeposit = (competition.prizeDeposits?.[0] ?? null) as { token_address?: string | null; amount?: string | number | null } | null
+  const vaultTokenAddress: string | null =
+    (vaultDeposit?.token_address && String(vaultDeposit.token_address).trim() ? String(vaultDeposit.token_address).trim() : null) ||
+    (tokenPrizeData?.token_address && String(tokenPrizeData.token_address).trim() ? String(tokenPrizeData.token_address).trim() : null) ||
+    (competition.fee_token_address && String(competition.fee_token_address).trim() ? String(competition.fee_token_address).trim() : null) ||
+    ((competition as any).tokenAddress && String((competition as any).tokenAddress).trim() ? String((competition as any).tokenAddress).trim() : null) ||
+    null
+
+  const { symbol: dynamicSymbol, decimals, isLoading: isLoadingDynamic } = useDynamicTokenInfo(vaultTokenAddress);
 
   const tokenSymbol =
-    (tokenPrizeData?.token_symbol || tokenPrizeData?.symbol) ??
-    getTokenSymbol(tokenPrizeData?.token_address, connectedNativeSymbol) ??
+    dynamicSymbol ??
+    ((tokenPrizeData as any)?.token_symbol || (tokenPrizeData as any)?.symbol) ??
+    getTokenSymbol(vaultTokenAddress, connectedNativeSymbol) ??
     competition.currency;
+
+  const { data: convertedPrizes } = useQuery({
+    queryKey: ['prize-distribution-conversion', vaultTokenAddress, competition.prizes],
+    queryFn: async () => {
+      const results: Record<string, ConvertTokenResult> = {};
+      const targetToken = vaultTokenAddress || "0x0000000000000000000000000000000000000000";
+
+      await Promise.all(
+        competition.prizes.map(async (prize) => {
+          if (prize.rawAmount) {
+            try {
+              results[prize.id] = await convertTokenOnChain(targetToken, prize.rawAmount);
+            } catch (err) {
+              console.warn(`Failed to convert prize ${prize.id} via convertTokenOnChain:`, err);
+            }
+          }
+        })
+      );
+      return results;
+    },
+    enabled: Boolean(competition.prizes && competition.prizes.length > 0),
+    staleTime: 60_000,
+  });
+
+  const totalPrizeAmount = React.useMemo(() => {
+    return competition.prizes.reduce((sum, prize) => {
+      const converted = convertedPrizes?.[prize.id];
+      const amount = converted
+        ? Number(converted.convertedAmount)
+        : prize.rawAmount && decimals !== undefined
+        ? parse18DecimalAmount(prize.rawAmount, decimals)
+        : prize.rawAmount && isLoadingDynamic
+        ? 0
+        : prize.amount;
+      return sum + amount;
+    }, 0);
+  }, [competition.prizes, decimals, isLoadingDynamic, convertedPrizes]);
 
   return (
     <PageContainer>
@@ -190,37 +238,58 @@ export function UserCompetitionDetailView({
           </p>
           <SectionHeading title="Prize Distribution" />
           <div className="space-y-3">
-            {competition.prizes.map((prize, index) => (
-              <div
-                key={prize.id}
-                className="flex flex-wrap items-center gap-3 rounded-xl bg-secondary/60 p-5"
-              >
-                <span className="rounded-lg bg-blue-100 p-2 text-amber-600">
-                  <Award size={23} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-bold">
-                    {prize.title} {index === 0 && <Badge>Grand Prize</Badge>}
-                  </h3>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {prize.description}
-                  </p>
-                </div>
-                <div className="ml-auto text-right">
-                  <strong className="text-xl">
-                    {formatMoney(prize.amount)}
-                  </strong>
-                  {getPrizeTotal(competition) > 0 && (
-                    <p className="text-[11px] font-semibold text-primary">
-                      {Math.round((prize.amount / getPrizeTotal(competition)) * 100)}% allocation
+            {competition.prizes.map((prize, index) => {
+              const converted = convertedPrizes?.[prize.id];
+              const displayFormattedAmount = converted 
+                ? converted.convertedAmount 
+                : isLoadingDynamic && prize.rawAmount && decimals === undefined
+                ? "…"
+                : (prize.rawAmount && decimals !== undefined ? parse18DecimalAmount(prize.rawAmount, decimals) : prize.amount).toLocaleString("en-US", { maximumFractionDigits: 6 });
+              
+              const numericAmount = converted 
+                ? Number(converted.convertedAmount) 
+                : prize.rawAmount && decimals !== undefined
+                ? parse18DecimalAmount(prize.rawAmount, decimals)
+                : prize.rawAmount && isLoadingDynamic
+                ? 0
+                : prize.amount;
+                
+              const displaySymbol = converted?.symbol || tokenSymbol;
+              const total = totalPrizeAmount;
+              const pct = total > 0 ? Math.round((numericAmount / total) * 100) : 0;
+
+              return (
+                <div
+                  key={prize.id}
+                  className="flex flex-wrap items-center gap-3 rounded-xl bg-secondary/60 p-5"
+                >
+                  <span className="rounded-lg bg-blue-100 p-2 text-amber-600">
+                    <Award size={23} />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-bold">
+                      {prize.title} {index === 0 && <Badge>Grand Prize</Badge>}
+                    </h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      {prize.description}
                     </p>
-                  )}
-                  <p className="text-[10px] font-bold text-teal-700">
-                    {tokenSymbol} Escrow
-                  </p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <strong className="text-xl">
+                      {displayFormattedAmount}
+                    </strong>
+                    {total > 0 && (
+                      <p className="text-[11px] font-semibold text-primary">
+                        {pct}% allocation
+                      </p>
+                    )}
+                    <p className="text-[10px] font-bold text-teal-700">
+                      {displaySymbol} Escrow
+                    </p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </Panel>
       </div>

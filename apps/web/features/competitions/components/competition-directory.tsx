@@ -1,4 +1,5 @@
 "use client"
+import { useChainId } from "wagmi"
 import {
   Breadcrumbs,
   PageContainer,
@@ -34,9 +35,10 @@ export function CompetitionDirectory({
   competitions?: readonly Competition[]
   referenceDate?: string
 }) {
+  const chainId = useChainId()
   const { data: competitions = initialCompetitions || [] } = useQuery({
-    queryKey: ["competitions-public"],
-    queryFn: () => fetchCompetitions(null),
+    queryKey: ["competitions-public", chainId],
+    queryFn: () => fetchCompetitions(chainId, null),
   })
 
   const [filters, setFilters] = useState<CompetitionFilters>(initialFilters)

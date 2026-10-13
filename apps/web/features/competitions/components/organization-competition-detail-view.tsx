@@ -4,6 +4,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
+import { useChainId } from "wagmi"
+import { getAddress, isAddress } from "viem"
 import {
   BookOpen,
   ChevronRight,
@@ -27,7 +29,7 @@ import {
   TableRow,
 } from "@workspace/ui/components/table";
 import {
-  fetchAllTeamsByCompetitionIdResult,
+  fetchOrganizationTeamsByCompetitionIdResult,
   getStoredToken,
   type ApiCompetition,
   type ApiTeam,
@@ -45,6 +47,9 @@ function getTeamInitials(name: string): string {
 }
 
 const StatusBadge = ({ status, visibility }: { status?: string; visibility?: boolean }) => {
+  // SUBMISSION STATUS harus berdasarkan atribut submission_project, bukan visibility.
+  // status sudah di-derive sebagai "Submitted" | "Incomplete" dari submission_project.
+  // Fallback visibility (Public/Private) hanya untuk kompatibilitas jika status kosong.
   const isPrivate = visibility === false;
   const label = status || (isPrivate ? "Private" : "Public");
 
@@ -65,8 +70,8 @@ const StatusBadge = ({ status, visibility }: { status?: string; visibility?: boo
   };
 
   return (
-    <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[label] || styles["Public"]}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${dotColors[label] || dotColors["Public"]}`} />
+    <Badge variant="outline" className={`font-medium px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit border-0 ${styles[label] || styles["Incomplete"]}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${dotColors[label] || dotColors["Incomplete"]}`} />
       {label}
     </Badge>
   );
@@ -102,6 +107,7 @@ export function OrganizationCompetitionDetailView({
   prizePoolDisplay,
   guidebookUrl,
 }: OrganizationViewProps) {
+  const chainId = useChainId()
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [storedToken, setStoredToken] = useState<string | null>(null);
@@ -110,9 +116,11 @@ export function OrganizationCompetitionDetailView({
     setStoredToken(getStoredToken());
   }, []);
 
+  // Owner-only: GET /api/v1/chains/:chainId/competitions/:id/teams/organization (Bearer JWT, competition.user_id === sub)
+  // Menggantikan join-teams (public visibility=true) agar private teams juga terlihat di view organizer.
   const { data: teamsResult, isLoading: isLoadingTeams } = useQuery({
-    queryKey: ["all-competition-teams", id, storedToken],
-    queryFn: () => (id ? fetchAllTeamsByCompetitionIdResult(id, storedToken || getStoredToken()) : null),
+    queryKey: ["organization-competition-teams", chainId, id, storedToken],
+    queryFn: () => (id ? fetchOrganizationTeamsByCompetitionIdResult(chainId, id, storedToken || getStoredToken()) : null),
     enabled: Boolean(id),
   });
 
@@ -150,6 +158,12 @@ export function OrganizationCompetitionDetailView({
 
       const initials = getTeamInitials(team.name);
 
+      // SUBMISSION STATUS harus berdasarkan atribut submission_project
+      // Backend teams/organization sudah include submission_project (lihat chain.service.ts)
+      // Jika ada submission_project -> Submitted, jika null/undefined -> Incomplete
+      const hasSubmission = Boolean((team as any).submission_project);
+      const submissionStatus: string = hasSubmission ? "Submitted" : "Incomplete";
+
       return {
         id: team.id,
         initials,
@@ -157,14 +171,15 @@ export function OrganizationCompetitionDetailView({
         members: membersStr,
         size: team.team_roles?.length || 1,
         visibility: team.visibility,
-        status: team.visibility ? "Public" : "Private",
+        status: submissionStatus,
+        hasSubmission,
+        submissionProject: (team as any).submission_project ?? null,
       };
     });
   }, [apiTeams]);
 
   const title = apiCompetition?.name || effectiveCompetition?.title || "Autonomous Agents Global Hackathon 2025";
-  const rawTxHash = apiCompetition?.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
-  const txHash = rawTxHash.startsWith("0x") ? rawTxHash : `0x${rawTxHash}`;
+  const txHash = apiCompetition?.tx_hash || "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
   const category = apiCompetition?.category || effectiveCompetition?.category || "AI & Autonomous Systems";
 
   const startDateLabel = formatDate(apiCompetition?.registration_window);
@@ -173,7 +188,9 @@ export function OrganizationCompetitionDetailView({
     ? `${startDateLabel} - ${endDateLabel}`
     : "Apr 20 - May 05, 2025";
 
-  const competitionContractAddress = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '0xb82F97deF35a9fe438ceB41f4fB5145514b18069';
+  const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as const
+  const _rawComp = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || "").trim().replace(/^['"]|['"]$/g, "").trim()
+  const competitionContractAddress: `0x${string}` = (_rawComp && isAddress(_rawComp) ? getAddress(_rawComp) : DEPLOYED_COMPETITION) as `0x${string}`
   const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0x501c3E1eB0059609Df8DE7bf06e70598e68F2d97';
 
   const explorerBaseUrl = 'https://scan.bohr.life';

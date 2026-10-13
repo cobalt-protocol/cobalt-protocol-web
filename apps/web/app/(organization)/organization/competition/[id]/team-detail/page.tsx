@@ -3,7 +3,7 @@
 import React, { useState, useEffect, Suspense } from 'react';
 import Link from 'next/link';
 import { useRouter, useParams, useSearchParams } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
 import { fetchApiMe, fetchTeamDetail, fetchTeamSubmissionResult, getStoredToken } from '@/lib/competitions-api';
 import {
@@ -50,6 +50,7 @@ function TeamDetailContent() {
     const searchParams = useSearchParams();
     const compId = (params?.id as string) || '';
     const teamId = searchParams.get('teamId') || '';
+    const chainId = useChainId();
     const { isConnected, status: accountStatus } = useAccount();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
@@ -65,15 +66,15 @@ function TeamDetailContent() {
         enabled: Boolean(storedToken),
     });
 
-    const { data: apiTeam } = useQuery({
-        queryKey: ["team-detail-page", teamId, storedToken],
-        queryFn: () => (teamId ? fetchTeamDetail(teamId, storedToken) : null),
+    const { data: apiTeam, isLoading: isLoadingTeam } = useQuery({
+        queryKey: ["team-detail-page", chainId, teamId, storedToken],
+        queryFn: () => (teamId ? fetchTeamDetail(chainId, teamId, storedToken) : null),
         enabled: Boolean(teamId) && Boolean(storedToken),
     });
 
     const { data: submissionRes, isLoading: isLoadingSubmission } = useQuery({
-        queryKey: ["team-submission-detail", teamId, storedToken],
-        queryFn: () => (teamId ? fetchTeamSubmissionResult(teamId, storedToken) : null),
+        queryKey: ["team-submission-detail", chainId, teamId, storedToken],
+        queryFn: () => (teamId ? fetchTeamSubmissionResult(chainId, teamId, storedToken) : null),
         enabled: Boolean(teamId) && Boolean(storedToken),
     });
 
@@ -123,37 +124,53 @@ function TeamDetailContent() {
             </div>
         );
     }
-    const displayTeamName = apiTeam?.name || "Team SwarmSynthetix";
-    const teamInitials = getInitials(displayTeamName);
+    // Jangan pakai data dummy — tampilkan hanya data dari API (apiTeam).
+    // Jika tidak ada, biarkan kosong / tampilkan placeholder "—" / empty state.
+    const displayTeamName: string | null = apiTeam?.name?.trim() ? apiTeam.name.trim() : null;
+    const teamInitials = displayTeamName ? getInitials(displayTeamName) : "—";
 
-    const roles = apiTeam?.team_roles || [];
-    const leaderRole = roles.find((r: any) => r.role === "leader") || roles[0];
-    const leaderUser = leaderRole?.user;
-    const leaderName = leaderUser?.username || leaderUser?.email || (leaderUser?.wallet_address ? `${leaderUser.wallet_address.slice(0, 6)}...${leaderUser.wallet_address.slice(-4)}` : "Alex Rivera");
-    const leaderEmail = leaderUser?.email || (leaderUser?.wallet_address ? `${leaderUser.wallet_address.slice(0, 6)}...${leaderUser.wallet_address.slice(-4)}` : "alex.rivera@agentmail.com");
+    const roles: any[] = apiTeam?.team_roles || [];
+    const leaderRole: any = roles.find((r: any) => r.role === "leader") || roles[0] || null;
+    const leaderUser: any = leaderRole?.user ?? null;
+    // Leader name/email hanya dari API — tidak ada fallback dummy "Alex Rivera"
+    const leaderName: string | null = leaderUser?.username?.trim()
+        ? leaderUser.username.trim()
+        : leaderUser?.email?.trim()
+            ? leaderUser.email.trim()
+            : leaderUser?.wallet_address
+                ? `${leaderUser.wallet_address.slice(0, 6)}...${leaderUser.wallet_address.slice(-4)}`
+                : null;
+    const leaderEmail: string | null = leaderUser?.email?.trim()
+        ? leaderUser.email.trim()
+        : leaderUser?.wallet_address
+            ? leaderUser.wallet_address
+            : null;
 
-    const dynamicMembers: TeamMemberItem[] | null = roles.length > 0
+    const memberList: TeamMemberItem[] = roles.length > 0
         ? roles.map((r: any) => {
-            const u = r.user;
-            const name = u?.username || u?.email || (u?.wallet_address ? `${u.wallet_address.slice(0, 6)}...${u.wallet_address.slice(-4)}` : "Collaborator");
-            const handle = u?.email ? `@${u.email.split("@")[0]}` : (u?.wallet_address ? `@${u.wallet_address.slice(0, 6)}` : "@collaborator");
+            const u: any = r.user;
+            const name: string | null = u?.username?.trim()
+                ? u.username.trim()
+                : u?.email?.trim()
+                    ? u.email.trim()
+                    : u?.wallet_address
+                        ? `${u.wallet_address.slice(0, 6)}...${u.wallet_address.slice(-4)}`
+                        : null;
+            // Jika tidak ada nama/email/wallet, jangan ngide — biarkan null nanti di-render sebagai "—"
+            const handle: string | null = u?.email?.trim()
+                ? `@${u.email.trim().split("@")[0]}`
+                : u?.wallet_address
+                    ? `@${u.wallet_address.slice(0, 6)}`
+                    : null;
             return {
-                name,
-                handle,
-                initials: getInitials(name),
+                name: name || "—",
+                handle: handle || "—",
+                initials: name ? getInitials(name) : "—",
                 color: "bg-blue-100",
                 text: "text-blue-700",
             };
         })
-        : null;
-
-    const defaultMembers: TeamMemberItem[] = [
-        { initials: "SC", name: "Sarah Chen", handle: "@sarahchen", color: "bg-emerald-100", text: "text-emerald-700" },
-        { initials: "DK", name: "Daniyal Kim", handle: "@daniyalkim", color: "bg-amber-100", text: "text-amber-700" },
-        { initials: "PS", name: "Priya Sharma", handle: "@priyasharma", color: "bg-purple-100", text: "text-purple-700" },
-    ];
-
-    const memberList: TeamMemberItem[] = dynamicMembers || defaultMembers;
+        : [];
 
     return (
         <div className="min-h-screen bg-slate-50/50 p-6 md:p-10 font-sans text-slate-900">
@@ -184,7 +201,10 @@ function TeamDetailContent() {
                                     <AvatarInitials initials={teamInitials} bgClass="bg-blue-600" textClass="text-white" />
                                     <div>
                                         <h3 className="font-semibold text-slate-900">Team Overview</h3>
-                                        <p className="text-xs text-slate-500">COHORT 2025 # TRACK A</p>
+                                        {/* Dummy "COHORT 2025 # TRACK A" dihapus — hanya tampilkan data real jika ada, kalau tidak ada tidak ditampilkan sama sekali */}
+                                        {apiTeam?.competition?.name ? (
+                                            <p className="text-xs text-slate-500">{apiTeam.competition.name}</p>
+                                        ) : null}
                                     </div>
                                 </div>
 
@@ -192,23 +212,39 @@ function TeamDetailContent() {
                                 <div className="px-6 py-4 border-0 bg-slate-50/50">
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">TEAM NAME</p>
                                     <div className="flex items-center gap-2">
-                                        <span className="font-bold text-lg text-slate-900">{displayTeamName}</span>
-                                        <CheckCircle2 className="w-5 h-5 text-blue-500 fill-blue-50" />
+                                        {isLoadingTeam ? (
+                                            <span className="text-sm text-slate-400">Loading...</span>
+                                        ) : displayTeamName ? (
+                                            <>
+                                                <span className="font-bold text-lg text-slate-900">{displayTeamName}</span>
+                                                <CheckCircle2 className="w-5 h-5 text-blue-500 fill-blue-50" />
+                                            </>
+                                        ) : (
+                                            <span className="text-sm text-slate-400 italic">No team name</span>
+                                        )}
                                     </div>
                                 </div>
 
                                 {/* Team Leader */}
                                 <div className="p-6 border-0">
                                     <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">TEAM LEADER</p>
-                                    <div className="bg-blue-50/50 rounded-xl p-4 flex items-center justify-between border-0">
-                                        <div className="flex items-center gap-3">
-                                            <AvatarInitials initials={getInitials(leaderName)} bgClass="bg-blue-600" textClass="text-white" />
-                                            <div>
-                                                <p className="font-semibold text-slate-900 text-sm">{leaderName}</p>
-                                                <p className="text-xs text-slate-500">{leaderEmail}</p>
+                                    {isLoadingTeam ? (
+                                        <p className="text-sm text-slate-400">Loading...</p>
+                                    ) : leaderName || leaderEmail ? (
+                                        <div className="bg-blue-50/50 rounded-xl p-4 flex items-center justify-between border-0">
+                                            <div className="flex items-center gap-3">
+                                                <AvatarInitials initials={leaderName ? getInitials(leaderName) : "—"} bgClass="bg-blue-600" textClass="text-white" />
+                                                <div>
+                                                    <p className="font-semibold text-slate-900 text-sm">{leaderName ?? "—"}</p>
+                                                    {leaderEmail ? (
+                                                        <p className="text-xs text-slate-500">{leaderEmail}</p>
+                                                    ) : null}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <p className="text-sm text-slate-400 italic">No team leader data</p>
+                                    )}
                                 </div>
 
                                 {/* Team Members */}
@@ -218,17 +254,23 @@ function TeamDetailContent() {
                                         <span className="text-xs text-slate-500 font-medium">{memberList.length} Collaborators</span>
                                     </div>
 
-                                    <div className="space-y-4">
-                                        {memberList.map((member: TeamMemberItem, i: number) => (
-                                            <div key={i} className="flex items-center gap-3">
-                                                <AvatarInitials initials={member.initials} bgClass={member.color} textClass={member.text} />
-                                                <div>
-                                                    <p className="font-medium text-slate-900 text-sm">{member.name}</p>
-                                                    <p className="text-xs text-slate-500">{member.handle}</p>
+                                    {isLoadingTeam ? (
+                                        <p className="text-sm text-slate-400">Loading members...</p>
+                                    ) : memberList.length > 0 ? (
+                                        <div className="space-y-4">
+                                            {memberList.map((member: TeamMemberItem, i: number) => (
+                                                <div key={i} className="flex items-center gap-3">
+                                                    <AvatarInitials initials={member.initials} bgClass={member.color} textClass={member.text} />
+                                                    <div>
+                                                        <p className="font-medium text-slate-900 text-sm">{member.name}</p>
+                                                        <p className="text-xs text-slate-500">{member.handle}</p>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        ))}
-                                    </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <p className="text-sm text-slate-400 italic">No team members</p>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>

@@ -1,3 +1,5 @@
+import type { ApiPrizeDeposit, ApiTokenPrizeData } from "@/lib/competitions-api"
+
 export const dashboardPhases = [
   "registration",
   "submission",
@@ -22,8 +24,13 @@ export interface DashboardCompetition {
   memberCount: number | null
   amountUsd: number
   currency: string
+  tokenAddress?: string | null
+  onchainCompetitionId?: string | number | null
+  rawTokenPrize?: ApiTokenPrizeData | null
+  prizeDeposits?: ApiPrizeDeposit[] | null
+  prizeDepositsTotalRaw?: string | null
   tokenPrizeFormatted?: string | null
-  poolLabel: string
+  poolLabel?: string
   actionLabel: string
   source: "fixture" | "local"
   pending?: boolean

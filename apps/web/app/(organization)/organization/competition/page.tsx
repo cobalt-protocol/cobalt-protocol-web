@@ -22,7 +22,9 @@ import {
 } from "@workspace/ui/components/select";
 import { Plus, Search, Calendar, ArrowRight, Loader2 } from "lucide-react";
 import { fetchApiOrganizationCompetitions, fetchApiMe, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol, getStoredToken, parse18DecimalAmount, type ApiCompetition } from "@/lib/competitions-api";
-import { useAccount } from "wagmi";
+import { useDynamicTokenInfo } from "@/lib/hooks/use-dynamic-token";
+import { useCompetitionTokenPrize } from "@/lib/hooks/use-competition-token-prize";
+import { useAccount, useChainId } from "wagmi";
 
 // --- Tipe ---
 type CompetitionStatus =
@@ -43,43 +45,10 @@ interface OrganizationCompetition {
     title: string;
     date: string;
     prize: string;
+    rawCompetition?: ApiCompetition;
 }
 
 // --- Data Fallback ---
-const fallbackCompetitions: OrganizationCompetition[] = [
-    {
-        id: "1",
-        category: "UI/UX Design",
-        status: "Submission",
-        title: "Autonomous Agents Global Hackathon 2025",
-        date: "Apr 20 - May 05, 2025",
-        prize: "75,000",
-    },
-    {
-        id: "2",
-        category: "Web3 & Cryptography",
-        status: "Judging",
-        title: "Zero-Knowledge Financial Privacy Challenge",
-        date: "Mar 15 - Apr 18, 2025",
-        prize: "50,000",
-    },
-    {
-        id: "3",
-        category: "DeFi & UX",
-        status: "Registration",
-        title: "NextGen DeFiUX & Account Abstraction",
-        date: "Apr 01 - Jun 15, 2025",
-        prize: "30,000",
-    },
-    {
-        id: "4",
-        category: "ClimateTech",
-        status: "Completed",
-        title: "Verifiable Carbon Ledger Track",
-        date: "Jan 10 - Feb 28, 2025",
-        prize: "40,000",
-    },
-];
 
 const statusStyles: Record<CompetitionStatus, { badge: string; dot: string }> =
 {
@@ -149,34 +118,33 @@ function determineStatus(comp: ApiCompetition): CompetitionStatus {
     return "Registration";
 }
 
-function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string): string {
+function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string, decimals?: number): string {
     if (comp.prize_winners && comp.prize_winners.length > 0) {
         const total = comp.prize_winners.reduce((acc, w) => {
           const val = w.prize_amount ?? w.amount ?? 0
-          return acc + parse18DecimalAmount(val, 18)
+          return acc + parse18DecimalAmount(val, decimals ?? 18)
         }, 0);
         if (total > 0) {
-            return total.toLocaleString("en-US");
+            return total.toLocaleString("en-US", { maximumFractionDigits: 6 });
         }
     }
-    return "50,000";
+    return "0";
 }
 
 function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }) {
     const style = statusStyles[comp.status] || statusStyles.Submission;
+    const chainId = useChainId()
     const { chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
-    const rawTxHash = comp.txHash || comp.tx_hash || '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
-    const txHash = rawTxHash.startsWith('0x') ? rawTxHash : `0x${rawTxHash}`;
+    const txHash = comp.txHash || comp.tx_hash || '0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef';
     const explorerUrl = `${explorerBaseUrl}/tx/${txHash}`;
 
-    const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
-        queryKey: ["competition-token-prize", comp.id],
-        queryFn: () => fetchTokenPrizeByCompetitionId(comp.id),
-        enabled: Boolean(comp.id),
-    });
+    const onchainCompId = comp.rawCompetition?.competition_id || (/^\d+$/.test(comp.id) ? comp.id : null);
+    const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useCompetitionTokenPrize(onchainCompId);
+
+    const { decimals, symbol: dynamicSymbol } = useDynamicTokenInfo(tokenPrizeData?.token_address);
 
     const prizeDisplay = useMemo(() => {
         if (isLoadingTokenPrize) return "Loading...";
@@ -185,16 +153,22 @@ function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }
                 tokenPrizeData.total_prize,
                 tokenPrizeData.token_address,
                 connectedNativeSymbol,
-                18,
-                (tokenPrizeData.token_symbol || tokenPrizeData.symbol) ?? undefined
+                decimals,
+                dynamicSymbol || (tokenPrizeData as any)?.token_symbol || (tokenPrizeData as any)?.symbol || undefined
             );
         }
-        const symbol = getTokenSymbol(null, connectedNativeSymbol);
-        if (comp.prize.includes(" ")) {
-            return comp.prize;
+        const symbol = dynamicSymbol || getTokenSymbol(tokenPrizeData?.token_address, connectedNativeSymbol);
+        if (comp.rawCompetition) {
+            const calculatedPrize = formatPrize(comp.rawCompetition, connectedNativeSymbol, decimals);
+            if (calculatedPrize !== "0") {
+                return `${calculatedPrize} ${symbol}`;
+            }
+        }
+        if (comp.prize.includes(" ") || comp.prize === "0") {
+            return `${comp.prize} ${symbol}`;
         }
         return `${comp.prize} ${symbol}`;
-    }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, comp.prize]);
+    }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, comp, decimals, dynamicSymbol]);
 
     return (
         <Card
@@ -269,6 +243,7 @@ export default function CompetitionListPage() {
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
 
+    const chainId = useChainId()
     const { isConnected, status: accountStatus, chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
 
@@ -303,7 +278,7 @@ export default function CompetitionListPage() {
         queryKey: ["organization-competitions", storedToken],
         queryFn: () => {
             const token = storedToken || getStoredToken();
-            return fetchApiOrganizationCompetitions(token || undefined);
+            return fetchApiOrganizationCompetitions(chainId, token || undefined);
         },
     });
 
@@ -318,12 +293,13 @@ export default function CompetitionListPage() {
                 title: comp.name || "Untitled Competition",
                 date: formatDates(comp),
                 prize: formatPrize(comp, connectedNativeSymbol),
+                rawCompetition: comp,
             }));
         }
         if (apiCompetitions && apiCompetitions.length === 0 && !isLoading) {
             return [];
         }
-        return fallbackCompetitions;
+        return [];
     }, [apiCompetitions, isLoading, connectedNativeSymbol]);
 
     const categories = useMemo<string[]>(

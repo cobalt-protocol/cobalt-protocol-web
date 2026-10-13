@@ -6,6 +6,7 @@ import { useSiteActions } from "@/components/layout/site-actions"
 import { Button } from "@workspace/ui/components/button"
 import { Share2 } from "lucide-react"
 import { getTokenByAddress, getTokenSymbol } from "@/lib/tokens"
+import { useDynamicTokenInfo } from "@/lib/hooks/use-dynamic-token"
 import type { RegistrationCompetition } from "@/features/registration/types"
 
 function isFreeFee(fee: unknown): boolean {
@@ -20,36 +21,33 @@ function isFreeFee(fee: unknown): boolean {
 function formatFeeDisplay(
   fee: unknown,
   tokenAddress?: string | null,
-  chainNativeSymbol?: string
+  chainNativeSymbol?: string,
+  dynamicDecimals?: number,
+  dynamicSymbol?: string
 ): string | null {
   if (isFreeFee(fee)) return null
   const raw = String(fee).trim()
   const token = getTokenByAddress(tokenAddress)
-  const symbol = getTokenSymbol(tokenAddress, chainNativeSymbol)
-  const decimals = token.decimals ?? 18
+  const symbol = dynamicSymbol || getTokenSymbol(tokenAddress, chainNativeSymbol)
+  const decimals = dynamicDecimals ?? token.decimals ?? 18
 
-  // Try wei/bigint path (same threshold as formatTokenPrize)
+  // Treat fee as raw atomic amount ALWAYS
   try {
     const bigVal = BigInt(raw)
-    if (bigVal >= 1_000_000_000n) {
-      const formattedStr = formatUnits(bigVal, decimals)
-      const numVal = parseFloat(formattedStr)
-      if (!isNaN(numVal)) {
-        return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
-      }
-      return `${formattedStr} ${symbol}`
+    const formattedStr = formatUnits(bigVal, decimals)
+    const numVal = parseFloat(formattedStr)
+    if (!isNaN(numVal)) {
+      return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
     }
-    // small bigint (< 1e9) is human-readable integer, fall through to Number formatting
+    return `${formattedStr} ${symbol}`
   } catch {
-    // not a pure integer string, handle as decimal string below
+    // fallback if somehow not a pure integer string
+    const numVal = Number(raw)
+    if (!isNaN(numVal)) {
+      return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
+    }
+    return `${raw} ${symbol}`
   }
-
-  const numVal = Number(raw)
-  if (!isNaN(numVal)) {
-    return `${numVal.toLocaleString("en-US", { maximumFractionDigits: 6 })} ${symbol}`
-  }
-  // fallback: raw string + symbol
-  return `${raw} ${symbol}`
 }
 
 export function CompetitionActions({
@@ -61,15 +59,19 @@ export function CompetitionActions({
   const { chain } = useAccount()
   const [isRegistering, setIsRegistering] = useState(false)
 
+  const { decimals: fetchedDecimals, symbol: fetchedSymbol } = useDynamicTokenInfo(competition.fee_token_address)
+
   const isFree = useMemo(() => isFreeFee(competition.fee), [competition.fee])
   const feeFormatted = useMemo(
     () =>
       formatFeeDisplay(
         competition.fee,
         competition.fee_token_address,
-        chain?.nativeCurrency?.symbol
+        chain?.nativeCurrency?.symbol,
+        fetchedDecimals,
+        fetchedSymbol
       ),
-    [competition.fee, competition.fee_token_address, chain?.nativeCurrency?.symbol]
+    [competition.fee, competition.fee_token_address, chain?.nativeCurrency?.symbol, fetchedDecimals, fetchedSymbol]
   )
   const registerLabel = isFree
     ? "Register for Free →"

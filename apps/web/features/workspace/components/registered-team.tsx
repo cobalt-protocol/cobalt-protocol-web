@@ -1,5 +1,6 @@
 "use client"
 import { useEffect, useState } from "react"
+import { useChainId } from "wagmi"
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
 import { TeamManagement } from "./team-management"
@@ -26,6 +27,7 @@ export function RegisteredTeam({
 }) {
   const [mounted, setMounted] = useState(false)
   const { memberships, ready, renameTeam, reloadMemberships } = useMemberships()
+  const chainId = useChainId()
   const { profile, connected } = useSiteActions()
   const queryClient = useQueryClient()
 
@@ -55,8 +57,8 @@ export function RegisteredTeam({
   const effectiveTeamId = teamId || membership?.teamId
 
   const { data: apiTeam, isLoading: isLoadingApiTeam } = useQuery({
-    queryKey: ["team-detail", effectiveTeamId],
-    queryFn: () => (effectiveTeamId ? fetchTeamDetail(effectiveTeamId) : null),
+    queryKey: ["team-detail", chainId, effectiveTeamId],
+    queryFn: () => (effectiveTeamId ? fetchTeamDetail(chainId, effectiveTeamId) : null),
     enabled: Boolean(effectiveTeamId),
   })
 
@@ -90,13 +92,13 @@ export function RegisteredTeam({
       return { success: true }
     }
 
-    const res = await updateTeamApi(effectiveTeamId, payload, storedToken)
+    const res = await updateTeamApi(chainId, effectiveTeamId, payload, storedToken)
     if (res.success) {
       if (payload.name) {
         renameTeam(competitionSlug, payload.name)
       }
-      queryClient.invalidateQueries({ queryKey: ["team-detail", effectiveTeamId] })
-      queryClient.invalidateQueries({ queryKey: ["team-competition", effectiveTeamId] })
+      queryClient.invalidateQueries({ queryKey: ["team-detail", chainId, effectiveTeamId] })
+      queryClient.invalidateQueries({ queryKey: ["team-competition", chainId, effectiveTeamId] })
       reloadMemberships()
       return { success: true }
     } else {

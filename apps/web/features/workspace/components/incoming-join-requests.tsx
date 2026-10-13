@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useChainId } from "wagmi"
 import { Check, Clock, Loader2, UserPlus, X } from "lucide-react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { Button } from "@workspace/ui/components/button"
@@ -56,6 +57,7 @@ function skillsOf(request: ApiRequestJoin): string[] {
 }
 
 export function IncomingJoinRequests({ teamId }: { teamId?: string }) {
+  const chainId = useChainId()
   const [mounted, setMounted] = useState(false)
   const [storedToken, setStoredToken] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<string | null>(null)
@@ -68,9 +70,9 @@ export function IncomingJoinRequests({ teamId }: { teamId?: string }) {
   }, [])
 
   const { data: result, isLoading } = useQuery({
-    queryKey: ["team-join-requests", teamId, storedToken],
+    queryKey: ["team-join-requests", chainId, teamId, storedToken],
     queryFn: () =>
-      teamId ? fetchTeamJoinRequestsResult(teamId, storedToken) : null,
+      teamId ? fetchTeamJoinRequestsResult(chainId, teamId, storedToken) : null,
     enabled: Boolean(teamId) && Boolean(storedToken),
   })
 
@@ -86,19 +88,19 @@ export function IncomingJoinRequests({ teamId }: { teamId?: string }) {
     setActionError(null)
     try {
       if (action === "accept") {
-        await acceptTeamJoinRequest(teamId, requestId, storedToken)
+        await acceptTeamJoinRequest(chainId, teamId, requestId, storedToken)
       } else {
-        await rejectTeamJoinRequest(teamId, requestId, storedToken)
+        await rejectTeamJoinRequest(chainId, teamId, requestId, storedToken)
       }
 
       await queryClient.invalidateQueries({
-        queryKey: ["team-join-requests", teamId],
+        queryKey: ["team-join-requests", chainId, teamId],
       })
       if (action === "accept") {
-        await queryClient.invalidateQueries({ queryKey: ["team-members", teamId] })
-        await queryClient.invalidateQueries({ queryKey: ["team-detail", teamId] })
+        await queryClient.invalidateQueries({ queryKey: ["team-members", chainId, teamId] })
+        await queryClient.invalidateQueries({ queryKey: ["team-detail", chainId, teamId] })
         await queryClient.invalidateQueries({
-          queryKey: ["team-competition", teamId],
+          queryKey: ["team-competition", chainId, teamId],
         })
       }
     } catch (error) {

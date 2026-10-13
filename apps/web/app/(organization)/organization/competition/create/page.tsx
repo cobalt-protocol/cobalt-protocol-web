@@ -3,8 +3,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
-import { useAccount, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
-import { parseEther, parseUnits, getAddress } from 'viem';
+import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { parseEther, parseUnits, getAddress, isAddress } from 'viem';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
 import {
     Select,
@@ -257,6 +257,7 @@ async function uploadToKuboIPFS(file: File): Promise<string> {
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
     const publicClient = usePublicClient();
+    const chainId = useChainId()
     const { address, isConnected, chain } = useAccount();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
@@ -323,7 +324,7 @@ export default function CreateCompetition() {
         async function loadPriceCompetition() {
             const targetId = priceCompetitionFeeId || '1';
             setIsLoadingPriceComp(true);
-            const priceComp = await fetchPriceCompetitionById(targetId);
+            const priceComp = await fetchPriceCompetitionById(chainId, targetId);
             if (priceComp) {
                 if (priceComp.title) setFeeCompetitionTitle(priceComp.title);
                 if (priceComp.treasury_fee) setFeeTreasuryAmount(priceComp.treasury_fee);
@@ -338,7 +339,7 @@ export default function CreateCompetition() {
 
     useEffect(() => {
         async function loadListingTokenPrizes() {
-            const tokens = await fetchListingTokenPrizes();
+            const tokens = await fetchListingTokenPrizes(chainId);
             if (tokens && tokens.length > 0) {
                 setListingTokens(tokens);
                 const activeToken = tokens.find((t) => t.is_active) || tokens[0];
@@ -440,9 +441,9 @@ export default function CreateCompetition() {
 
     const guidebookInputRef = useRef<HTMLInputElement>(null);
 
-    const competitionContractAddress = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT ||
-        process.env.COMPETITION_CONTRACT ||
-        '0xb82F97deF35a9fe438ceB41f4fB5145514b18069') as `0x${string}`;
+    const DEPLOYED_COMPETITION = '0xD9e56794a88F4Ad06B46d6e13712900103AC1e44' as const;
+    const _rawCompEnv = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '').trim().replace(/^['"]|['"]$/g, '').trim();
+    const competitionContractAddress: `0x${string}` = (_rawCompEnv && isAddress(_rawCompEnv) ? getAddress(_rawCompEnv) : DEPLOYED_COMPETITION) as `0x${string}`;
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
 

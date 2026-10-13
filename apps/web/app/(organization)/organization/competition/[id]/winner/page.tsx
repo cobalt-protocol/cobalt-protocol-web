@@ -2,9 +2,12 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
-import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchAllTeamsByCompetitionId } from '@/lib/competitions-api';
+import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchOrganizationTeamsByCompetitionId, fetchSetWinnerSignature } from '@/lib/competitions-api';
+import CompetitionManagerABI from '@/abi/CompetitionManager.json';
+import { useToast } from "@/hooks/use-toast";
+import { getAddress, isAddress, decodeErrorResult } from 'viem';
 import { ChevronRight, Loader2 } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
@@ -30,6 +33,7 @@ export default function DetermineWinner() {
     const router = useRouter();
     const params = useParams();
     const compId = (params?.id as string) || '';
+    const chainId = useChainId()
     const { isConnected, status: accountStatus } = useAccount();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
@@ -47,13 +51,14 @@ export default function DetermineWinner() {
 
     const { data: prizeWinners, isLoading: isLoadingPrizeWinners } = useQuery({
         queryKey: ["prize-winners", compId, storedToken],
-        queryFn: () => fetchPrizeWinnersByCompetitionId(compId, storedToken || getStoredToken()),
+        queryFn: () => fetchPrizeWinnersByCompetitionId(chainId, compId, storedToken || getStoredToken()),
         enabled: Boolean(compId && storedToken),
     });
 
+    // Owner-only: GET /api/v1/chains/:chainId/competitions/:id/teams/organization (Bearer JWT) — returns all teams (public+private)
     const { data: allTeams = [], isLoading: isLoadingTeams } = useQuery({
-        queryKey: ["competition-all-teams", compId, storedToken],
-        queryFn: () => fetchAllTeamsByCompetitionId(compId, storedToken || getStoredToken()),
+        queryKey: ["organization-competition-teams", chainId, compId, storedToken],
+        queryFn: () => fetchOrganizationTeamsByCompetitionId(chainId, compId, storedToken || getStoredToken()),
         enabled: Boolean(compId && storedToken),
     });
 
@@ -83,16 +88,24 @@ export default function DetermineWinner() {
 
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [winnerSet, setWinnerSet] = useState<Record<string | number, boolean>>({});
+    const [isSettingWinner, setIsSettingWinner] = useState<Record<string | number, boolean>>({});
+    const { toast } = useToast();
+    
+    const { writeContractAsync } = useWriteContract();
+
+    // To wait for tx receipts dynamically, we could use wagmi useWaitForTransactionReceipt 
+    // but since we map over multiple categories, it's easier to use a public client or just wait for the promise if available. 
+    // Wagmi writeContractAsync just returns tx hash. We will just show toast when it is sent successfully.
 
     useEffect(() => {
         if (prizeWinners) {
             if (prizeWinners.length > 0) {
                 const mappedCategories: CategoryItem[] = prizeWinners.map((pw, index) => {
-                    const assignedTeamId = pw.winner_id
-                        ? String(pw.winner_id)
-                        : pw.winner?.id
-                        ? String(pw.winner.id)
-                        : (allTeams[index]?.id || allTeams[0]?.id || '');
+                    const existing = categories.find((c) => String(c.id) === String(pw.id));
+                    const matchingTeam = pw.winner
+                        ? allTeams.find((t) => t.user_id === pw.winner?.user_id || t.team_roles?.some((r: any) => r.user_id === pw.winner?.user_id))
+                        : undefined;
+                    const assignedTeamId = existing?.teamId || matchingTeam?.id || allTeams[index]?.id || allTeams[0]?.id || '';
                     return {
                         id: pw.id,
                         name: pw.category,
@@ -103,7 +116,7 @@ export default function DetermineWinner() {
 
                 const initialWinnerSet: Record<string | number, boolean> = {};
                 prizeWinners.forEach((pw) => {
-                    if (pw.winner || pw.winner_id) {
+                    if (Boolean(pw.winner)) {
                         initialWinnerSet[pw.id] = true;
                     }
                 });
@@ -129,8 +142,92 @@ export default function DetermineWinner() {
         );
     };
 
-    const handleSetWinner = (categoryId: string | number) => {
-        setWinnerSet((prev) => ({ ...prev, [categoryId]: true }));
+    const handleSetWinner = async (categoryId: string | number) => {
+        const teamId = categories.find((c) => String(c.id) === String(categoryId))?.teamId;
+        if (!teamId) {
+            toast({
+                title: "No team selected",
+                description: "Please select a team for this category before setting the winner.",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsSettingWinner((prev) => ({ ...prev, [categoryId]: true }));
+        try {
+            // 1. Fetch Signature
+            const sigResp: any = await fetchSetWinnerSignature(chainId, compId, String(categoryId), String(teamId));
+            const data = sigResp?.data;
+            const signature = data?.signature;
+            const onchainWinnerId = data?.winner_id;
+            const participant = data?.participant;
+            // API returns { competition_onchain_id: "2" } plus row.competition_id ULID — must read onchain field
+            const onchainCompetitionId = (data as any)?.competition_onchain_id ?? data?.competition_id;
+            const numericTeamId = data?.numeric_team_id;
+
+            if (!signature || !onchainWinnerId || !participant || !onchainCompetitionId || !numericTeamId) {
+                throw new Error(sigResp?.message || "Incomplete signature payload from API.");
+            }
+            // Guard: contract expects uint256 numeric strings — ULID will throw "Cannot convert ... to BigInt"
+            const numericRe = /^\d+$/;
+            if (!numericRe.test(String(onchainWinnerId)) || !numericRe.test(String(onchainCompetitionId)) || !numericRe.test(String(numericTeamId))) {
+                throw new Error(`Invalid numeric payload from API (expected competition_onchain_id numeric, got winner_id=${String(onchainWinnerId)} competition_onchain_id=${String(onchainCompetitionId)} numeric_team_id=${String(numericTeamId).slice(0, 20)}… — check API/contract address and chain)`);
+            }
+
+            // 2. Call Smart Contract
+            const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as const;
+            const _rawComp = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || "").trim().replace(/^['"]|['"]$/g, "").trim();
+            const competitionContractAddress: `0x${string}` = (_rawComp && isAddress(_rawComp) ? getAddress(_rawComp) : DEPLOYED_COMPETITION) as `0x${string}`;
+
+            await writeContractAsync({
+                address: competitionContractAddress,
+                abi: CompetitionManagerABI as any,
+                functionName: "setWinner",
+                args: [
+                    BigInt(onchainWinnerId),
+                    participant,
+                    BigInt(onchainCompetitionId),
+                    BigInt(numericTeamId),
+                    signature as `0x${string}`
+                ]
+            });
+
+            setWinnerSet((prev) => ({ ...prev, [categoryId]: true }));
+            toast({
+                title: "Winner Set Successfully",
+                description: "The winner has been set on-chain.",
+            });
+        } catch (error: any) {
+            console.error("Failed to set winner:", error);
+            let decoded: string | null = null;
+            try {
+                const d: string | undefined = error?.data || error?.cause?.data || error?.cause?.cause?.data;
+                if (d && typeof d === "string" && d.startsWith("0x") && d.length >= 10) {
+                    const r: any = decodeErrorResult({ abi: CompetitionManagerABI as any, data: d as `0x${string}` });
+                    if (r?.errorName) decoded = r.errorName as string;
+                }
+            } catch {}
+            if (!decoded) {
+                const m = String(error?.shortMessage || error?.message || error?.cause?.message || "");
+                for (const n of ["InvalidSignature","WinnerAlreadyClaimed","WinnerDoesNotExist","WinnerMismatch","InsufficientCompetitionPrize","CompetitionDoesNotExist","NotOrganization","ECDSAInvalidSignature","ECDSAInvalidSignatureLength","ECDSAInvalidSignatureS","PrizeTokenMismatch","AmountZero","InsufficientPrizeBalance","TreasuryDoesNotExist"]) if (m.includes(n)) { decoded = n; break; }
+            }
+            const map: Record<string,string> = {
+                InvalidSignature: "Invalid signature — signer mismatch or wrong chain/contract/ids. Ensure API PRIVATE_KEY_SIGNER matches CompetitionManager.signerAddress (NEXT_PRIVATE_KEY_SIGNER 0x289E…).",
+                WinnerAlreadyClaimed: "Winner already claimed for this competition/team/wallet.",
+                WinnerDoesNotExist: "Winner ID does not exist.",
+                WinnerMismatch: "Winner does not belong to this competition.",
+                NotOrganization: "Only the competition organization can set the winner.",
+                ECDSAInvalidSignature: "ECDSA recovery failed — signature not from signerAddress.",
+            };
+            const msg = decoded ? (map[decoded] || `${decoded}: ${error?.shortMessage || error?.message}`) : (error?.cause?.message || error?.shortMessage || error?.message || "Failed to set winner.");
+            toast({
+                title: decoded ? `Failed: ${decoded}` : "Failed to Set Winner",
+                description: msg,
+                variant: "destructive",
+            });
+        } finally {
+            setIsSettingWinner((prev) => ({ ...prev, [categoryId]: false }));
+        }
     };
 
     return (
@@ -237,10 +334,18 @@ export default function DetermineWinner() {
                                                     </button>
                                                 ) : (
                                                     <button
+                                                        disabled={Boolean(isSettingWinner[category.id])}
                                                         onClick={() => handleSetWinner(category.id)}
-                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors"
+                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                                                     >
-                                                        Set Winner
+                                                        {isSettingWinner[category.id] ? (
+                                                            <>
+                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                <span>Setting...</span>
+                                                            </>
+                                                        ) : (
+                                                            <span>Set Winner</span>
+                                                        )}
                                                     </button>
                                                 )}
                                             </td>

@@ -5,7 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowRight, KeyRound, Loader2, RefreshCw, Search, Sparkles } from "lucide-react"
 import { useQuery } from "@tanstack/react-query"
-import { useAccount } from "wagmi"
+import { useAccount, useChainId } from "wagmi"
 import { Button } from "@workspace/ui/components/button"
 import {
   Breadcrumbs,
@@ -22,6 +22,7 @@ import {
   acceptTeamInviteByCode,
   fetchTeamsByCompetitionId,
   getStoredToken,
+  joinTeamByCode,
   parseCapacityFromFormation,
   requestJoinTeam,
 } from "@/lib/competitions-api"
@@ -36,6 +37,7 @@ import type { TeamListing } from "../types"
 import { TeamCard } from "./team-card"
 
 export function JoinTeamPage({ competition }: { competition: Competition }) {
+  const chainId = useChainId()
   const router = useRouter()
   const { isConnected, status: accountStatus } = useAccount()
   const { joinTeam, register } = useSiteActions()
@@ -65,10 +67,12 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
     }
   }, [hasCheckedToken, isConnected, accountStatus, storedToken, router])
 
-  // Fetch teams from NestJS API endpoint GET /api/v1/teams/competition/:competitionId
+  // Fetch teams via GET /api/v1/chains/:chainId/competitions/:competitionId/join-teams
+  // Protected AuthSessionGuard, filter visibility=true, chain_id via indexer_state,
+  // skip team yang sudah ada di request_join / team_role untuk user login
   const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
-    queryKey: ["competition-teams", competition.id],
-    queryFn: () => fetchTeamsByCompetitionId(competition.id),
+    queryKey: ["competition-teams", chainId, competition.id],
+    queryFn: () => fetchTeamsByCompetitionId(chainId, competition.id),
     enabled: Boolean(competition.id),
   })
 
@@ -138,7 +142,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
 
     try {
       if (inviteCode) {
-        await acceptTeamInviteByCode(inviteCode, team.id)
+        await acceptTeamInviteByCode(chainId, inviteCode, team.id)
         joinTeam({
           competitionSlug: competition.slug,
           teamId: team.id,
@@ -152,7 +156,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
         })
       } else {
         // Public team: submit a join request to the backend
-        await requestJoinTeam(team.id)
+        await requestJoinTeam(chainId, team.id)
         joinTeam({
           competitionSlug: competition.slug,
           teamId: team.id,
@@ -238,56 +242,61 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           className="flex w-full flex-wrap gap-3 md:w-auto"
           onSubmit={async (event) => {
             event.preventDefault()
-            const normalized = code.trim().toUpperCase()
-            if (!normalized) return
+            const rawCode = code.trim()
+            if (!rawCode) return
 
             setError(null)
             setIsSubmittingCode(true)
 
             try {
-              const matchedApiTeam = apiTeams.find((t) =>
-                t.team_codes?.some((c) => c.code.toUpperCase() === normalized)
+              // POST /chains/:chainId/competitions/:competitionId/join-by-code
+              // Resolves the code server-side (works for private teams that are
+              // not listed in the public directory) and returns the joined team.
+              const result = await joinTeamByCode(
+                chainId,
+                competition.id,
+                rawCode
               )
+              const joined = result?.data
 
-              if (matchedApiTeam) {
-                const leadRole = matchedApiTeam.team_roles?.find(
-                  (r) => r.role === "LEAD" || r.role === "lead" || r.role === "LEADER"
-                )
-                const leadUser = leadRole?.user
-                const leadName =
-                  leadUser?.username ||
-                  (leadUser?.wallet_address
-                    ? `${leadUser.wallet_address.slice(0, 6)}...${leadUser.wallet_address.slice(-4)}`
-                    : matchedApiTeam.user_id
-                      ? `User ${matchedApiTeam.user_id.slice(-6)}`
-                      : "Squad Lead")
-                const skills =
-                  matchedApiTeam.skills_team &&
-                  matchedApiTeam.skills_team.length > 0
-                    ? matchedApiTeam.skills_team.map((s) => s.name)
-                    : ["Fullstack Developer"]
-
-                await requestTeam(
-                  {
-                    id: matchedApiTeam.id,
-                    name: matchedApiTeam.name,
-                    lead: leadName,
-                    memberCount: matchedApiTeam.team_roles?.length || 1,
-                    description: matchedApiTeam.description || "Private Team",
-                    roles: skills,
-                    matchScore: 95,
-                  },
-                  normalized
-                )
-                return
-              }
-
-              // The reference-code accept endpoint was removed; an invite can
-              // only be accepted when its team is known. Surface a clear error
-              // when the code does not match a team in this competition.
-              throw new Error(
-                "We couldn't match that team code to a team in this competition. Please ask the team leader for a valid invite link."
+              // Enrich the local membership preview when the joined team is also
+              // part of the public directory listing.
+              const normalized = rawCode.toUpperCase()
+              const matchedApiTeam = apiTeams.find(
+                (t) =>
+                  (joined?.team_id && t.id === joined.team_id) ||
+                  t.team_codes?.some((c) => c.code.toUpperCase() === normalized)
               )
+              const leadRole = matchedApiTeam?.team_roles?.find(
+                (r) =>
+                  r.role === "LEAD" ||
+                  r.role === "lead" ||
+                  r.role === "LEADER"
+              )
+              const leadUser = leadRole?.user
+              const leadName =
+                leadUser?.username ||
+                (leadUser?.wallet_address
+                  ? `${leadUser.wallet_address.slice(0, 6)}...${leadUser.wallet_address.slice(-4)}`
+                  : matchedApiTeam?.user_id
+                    ? `User ${matchedApiTeam.user_id.slice(-6)}`
+                    : "Squad Lead")
+
+              joinTeam({
+                competitionSlug: competition.slug,
+                teamId: joined?.team_id || matchedApiTeam?.id || "",
+                teamName:
+                  joined?.team_name || matchedApiTeam?.name || "Your team",
+                visibility: "private",
+                requirements:
+                  matchedApiTeam?.skills_team
+                    ?.map((s) => s.name)
+                    .join(", ") || "",
+                ownerUsername: leadName,
+                role: "member",
+                status: "active",
+                inviteCode: rawCode,
+              })
             } catch (err: any) {
               setError(
                 err?.message ||

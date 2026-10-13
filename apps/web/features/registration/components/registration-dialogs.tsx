@@ -48,7 +48,7 @@ export function RegistrationDialogs({
           onSetup={() =>
             onNavigate(
               dialog.competition
-                ? `${routes.profile}?setup=1&competition=${encodeURIComponent(dialog.competition.slug)}`
+                ? `${routes.profile}?setup=1&competition=${encodeURIComponent(dialog.competition.id)}`
                 : `${routes.profile}?setup=1`
             )
           }

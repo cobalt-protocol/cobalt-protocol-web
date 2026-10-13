@@ -1,6 +1,9 @@
+import { NotFoundUI } from "@/components/ui/not-found-ui"
 import type { Metadata } from "next"
 import { getCompetitionById } from "@/features/competitions/data/competition-repository"
 import { CompetitionDetail } from "@/features/competitions/components/competition-detail"
+
+export const dynamic = "force-dynamic"
 
 interface PageProps {
     params: Promise<{ id: string }>
@@ -21,6 +24,8 @@ export async function generateMetadata({
 export default async function OrganizationCompetitionPage({ params }: PageProps) {
     const { id } = await params
     const competition = await getCompetitionById(id)
+    if (!competition) return <NotFoundUI />
 
     return <CompetitionDetail competition={competition} id={id} viewMode="organization" />
 }
+

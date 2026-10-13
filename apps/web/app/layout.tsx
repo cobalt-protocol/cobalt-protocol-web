@@ -6,6 +6,7 @@ import { SiteHeader } from "@/components/layout/site-header"
 import { SiteFooter } from "@/components/layout/site-footer"
 import { SiteActionsProvider } from "@/components/layout/site-actions"
 import { Web3Provider } from "@/providers/web3-provider"
+import { Toaster } from "@/components/ui/toaster"
 import { cn } from "@workspace/ui/lib/utils"
 
 const manrope = Manrope({
@@ -51,6 +52,7 @@ export default function RootLayout({
                 {children}
               </main>
               <SiteFooter />
+              <Toaster />
             </SiteActionsProvider>
           </Web3Provider>
         </ThemeProvider>

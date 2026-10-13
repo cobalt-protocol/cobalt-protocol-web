@@ -75,10 +75,18 @@ const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
 
+export const DEFAULT_CHAIN_ID = 968
+export function resolveChainId(chainId?: number | null): number {
+  if (typeof chainId === "number" && Number.isInteger(chainId) && chainId > 0) return chainId
+  return DEFAULT_CHAIN_ID
+}
+
 export async function generateNonce(
-  walletAddress: string
+  walletAddress: string,
+  chainId?: number
 ): Promise<NonceResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/nonce`, {
+  const resolvedChainId = resolveChainId(chainId)
+  const response = await fetch(`${API_BASE_URL}/chains/${resolvedChainId}/auth/nonce`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -112,8 +120,9 @@ export async function verifySignature(params: {
   signature: string
   nonce?: string
   message?: string
-}): Promise<VerifySignatureResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/verify/nonce`, {
+}, chainId?: number): Promise<VerifySignatureResponse> {
+  const resolvedChainId = resolveChainId(chainId)
+  const response = await fetch(`${API_BASE_URL}/chains/${resolvedChainId}/auth/verify/nonce`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -142,8 +151,9 @@ export async function verifySignature(params: {
   return response.json()
 }
 
-export async function getMe(token: string): Promise<UserProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/auth/me`, {
+export async function getMe(token: string, chainId?: number): Promise<UserProfileResponse> {
+  const resolvedChainId = resolveChainId(chainId)
+  const response = await fetch(`${API_BASE_URL}/chains/${resolvedChainId}/auth/me`, {
     method: "GET",
     headers: {
       Authorization: `Bearer ${token}`,

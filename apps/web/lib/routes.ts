@@ -16,5 +16,12 @@ export const routes = {
   organizationWinner: (id: string) =>
     `/organization/competition/${encodeURIComponent(id)}/winner`,
   workspace: (id: string) => `/my-competition/${encodeURIComponent(id)}`,
+  explorer: {
+    tx: (chainId: number, hash: string) => {
+      // mapping chain id to explorer url (fallback botchain testnet)
+      const base = chainId === 968 ? "https://testnet.botscan.app" : "https://testnet.botscan.app"
+      return `${base}/tx/${hash}`
+    }
+  },
 } as const
 

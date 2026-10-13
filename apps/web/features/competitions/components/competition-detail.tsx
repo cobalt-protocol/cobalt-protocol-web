@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
-import { useAccount } from 'wagmi';
+import { useAccount, useChainId } from 'wagmi';
 import {
   fetchApiCompetitionById,
   fetchTokenPrizeByCompetitionId,
@@ -14,10 +14,14 @@ import {
   fetchCompetitionById,
   mapApiCompetitionToCompetition,
 } from '@/lib/competitions-api';
+import { useDynamicTokenInfo } from '@/lib/hooks/use-dynamic-token';
+import { useCompetitionTokenPrize } from '@/lib/hooks/use-competition-token-prize';
 import type { Competition } from '../types';
 import { getPrizeTotal } from '../lib/competition-selectors';
 import { PageContainer } from "@/components/ui/page-primitives";
+import { NotFoundUI } from "@/components/ui/not-found-ui";
 import { formatMoney } from "@/lib/format";
+import { notFound } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import { OrganizationCompetitionDetailView } from "./organization-competition-detail-view";
 import { UserCompetitionDetailView } from "./user-competition-detail-view";
@@ -35,6 +39,7 @@ export function CompetitionDetail({
   id,
   viewMode = "auto",
 }: CompetitionDetailProps) {
+  const chainId = useChainId()
   const router = useRouter();
   const { isConnected } = useAccount();
   const competitionId = id || slug || initialCompetition?.id || initialCompetition?.slug || "";
@@ -57,34 +62,38 @@ export function CompetitionDetail({
   });
 
   const { data: apiCompetition, isLoading: isLoadingApi } = useQuery({
-    queryKey: ["competition", competitionId],
-    queryFn: () => fetchApiCompetitionById(competitionId),
+    queryKey: ["competition", chainId, competitionId],
+    queryFn: () => fetchApiCompetitionById(chainId, competitionId),
     enabled: Boolean(competitionId),
   });
 
   const targetApiId = apiCompetition?.id || competitionId;
 
-  const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useQuery({
-    queryKey: ["competition-token-prize", targetApiId],
-    queryFn: () => fetchTokenPrizeByCompetitionId(targetApiId),
-    enabled: Boolean(targetApiId),
-  });
-
   const { data: fetchedUserCompetition } = useQuery({
-    queryKey: ["user-competition-domain", competitionId],
+    queryKey: ["user-competition-domain", chainId, competitionId],
     queryFn: async () => {
       if (initialCompetition) return initialCompetition;
       if (apiCompetition) return mapApiCompetitionToCompetition(apiCompetition);
-      if (competitionId) return (await fetchCompetitionById(competitionId)) || undefined;
+      if (competitionId) return (await fetchCompetitionById(chainId, competitionId)) || undefined;
       return undefined;
     },
     enabled: Boolean(competitionId && !initialCompetition),
   });
 
+  const onchainCompId = apiCompetition?.competition_id || initialCompetition?.onchainCompetitionId || fetchedUserCompetition?.onchainCompetitionId;
+
+  const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useCompetitionTokenPrize(onchainCompId);
+
+  const { decimals, symbol: dynamicSymbol } = useDynamicTokenInfo(tokenPrizeData?.token_address);
+
   const effectiveCompetition: Competition | undefined = useMemo(() => {
     if (apiCompetition) {
       return mapApiCompetitionToCompetition(apiCompetition);
     }
+    if (apiCompetition === null && !isLoadingApi) {
+      return undefined;
+    }
+
     return initialCompetition || fetchedUserCompetition;
   }, [apiCompetition, initialCompetition, fetchedUserCompetition]);
 
@@ -117,17 +126,21 @@ export function CompetitionDetail({
         tokenPrizeData.total_prize,
         tokenPrizeData.token_address,
         connectedNativeSymbol,
-        18,
-        (tokenPrizeData.token_symbol || tokenPrizeData.symbol) ?? undefined
+        decimals,
+        dynamicSymbol || (tokenPrizeData as any)?.token_symbol || (tokenPrizeData as any)?.symbol || undefined
       );
     }
     if (effectiveCompetition) {
       return formatMoney(getPrizeTotal(effectiveCompetition));
     }
     return `75,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
-  }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, effectiveCompetition]);
+  }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, effectiveCompetition, decimals, dynamicSymbol]);
 
   const showOrgView = viewMode === "organization" || (viewMode === "auto" && isOrganizationRole);
+
+  if (!isLoadingApi && !effectiveCompetition) {
+    return <NotFoundUI />;
+  }
 
   return (
     <div className="w-full">

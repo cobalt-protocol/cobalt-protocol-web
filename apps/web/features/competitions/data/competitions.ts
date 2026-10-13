@@ -29,24 +29,28 @@ const baseCompetition: Competition = {
       id: "first",
       title: "1st Place Champion",
       amount: 35000,
+      rawAmount: "35000",
       description: "Compute grants and a direct accelerator interview",
     },
     {
       id: "second",
       title: "2nd Place Finalist",
       amount: 20000,
+      rawAmount: "20000",
       description: "Participation credential and ecosystem cloud credits",
     },
     {
       id: "third",
       title: "3rd Place Finalist",
       amount: 10000,
+      rawAmount: "10000",
       description: "Developer showcase feature",
     },
     {
       id: "bounty",
       title: "Track Bounty",
       amount: 10000,
+      rawAmount: "10000",
       description:
         "Special recognition for an outstanding technical contribution",
     },
@@ -259,20 +263,4 @@ const additionalCompetitions: ReadonlyArray<
       "Turn open environmental datasets into tools that support more informed local decisions.",
   },
 ]
-export const mockCompetitions: readonly Competition[] = [
-  baseCompetition,
-  ...additionalCompetitions.map((item, index): Competition => ({
-    ...baseCompetition,
-    ...item,
-    participants: index === 0 ? 890 : index === 1 ? 620 : 160 + index * 43,
-    teamCount: index === 0 ? 195 : index === 1 ? 140 : 24 + index * 7,
-    registrationEndsAt:
-      index === 1 ? "2025-04-07T23:59:00Z" : baseCompetition.registrationEndsAt,
-    status: index === 1 ? "closing-soon" : "registration-open",
-    timeline: baseCompetition.timeline.map((stage) =>
-      stage.id === "registration" && index === 1
-        ? { ...stage, dateLabel: "Closes Apr 07 · 23:59 UTC" }
-        : stage
-    ),
-  })),
-]
+export const mockCompetitions: readonly Competition[] = []

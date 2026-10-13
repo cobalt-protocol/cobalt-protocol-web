@@ -5,6 +5,7 @@ import {
   Panel,
   SectionHeading,
 } from "@/components/ui/page-primitives"
+import { useChainId } from "wagmi"
 import { useBrowserDraft } from "@/lib/browser-draft"
 import { Button } from "@workspace/ui/components/button"
 import { CheckCircle2, ExternalLink, Pencil, UploadCloud, X } from "lucide-react"
@@ -20,6 +21,7 @@ import type { SubmissionDraft } from "../types"
 import { useSiteActions } from "@/components/layout/site-actions"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
+  DEFAULT_CHAIN_ID,
   fetchTeamSubmissionResult,
   submitTeamProjectSubmissionApi,
   uploadToKuboIPFS,
@@ -30,11 +32,13 @@ function SubmissionEditor({
   initialDraft,
   onSave,
   teamId,
+  chainId,
   onSuccess,
 }: {
   initialDraft: SubmissionDraft
   onSave: (draft: SubmissionDraft) => boolean
   teamId?: string
+  chainId?: number
   onSuccess?: () => void
 }) {
   const [draft, setDraft] = useState(initialDraft)
@@ -87,8 +91,8 @@ function SubmissionEditor({
         `File uploaded to IPFS (CID: ${cid}). Submitting project to API...`
       )
 
-      // 2. Submit to API endpoint POST /teams/:teamId/submission
-      const result = await submitTeamProjectSubmissionApi(teamId, {
+      // 2. Submit to API endpoint POST /chains/:chainId/teams/:teamId/submission
+      const result = await submitTeamProjectSubmissionApi(chainId ?? DEFAULT_CHAIN_ID, teamId as string, {
         title: draft.title.trim(),
         description: draft.description.trim(),
         submission_link: draft.link.trim(),
@@ -327,6 +331,7 @@ export function SubmissionForm({
   teamId?: string
 }) {
   const [mounted, setMounted] = useState(false)
+  const chainId = useChainId()
   const [isEditing, setIsEditing] = useState(false)
   const { connected } = useSiteActions()
   const queryClient = useQueryClient()
@@ -344,8 +349,8 @@ export function SubmissionForm({
     data: submissionResult,
     isLoading: isLoadingSubmission,
   } = useQuery({
-    queryKey: ["team-submission", teamId],
-    queryFn: () => (teamId ? fetchTeamSubmissionResult(teamId) : null),
+    queryKey: ["team-submission", chainId, teamId],
+    queryFn: () => (teamId ? fetchTeamSubmissionResult(chainId, teamId) : null),
     enabled: Boolean(teamId),
   })
 
@@ -403,9 +408,10 @@ export function SubmissionForm({
             initialDraft={initialDraft}
             onSave={save}
             teamId={teamId}
+            chainId={chainId}
             onSuccess={() => {
               queryClient.invalidateQueries({
-                queryKey: ["team-submission", teamId],
+                queryKey: ["team-submission", chainId, teamId],
               })
               setIsEditing(false)
             }}

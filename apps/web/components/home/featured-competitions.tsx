@@ -1,4 +1,5 @@
 "use client"
+import { useChainId } from "wagmi"
 import { useState } from "react"
 import Link from "next/link"
 import { ArrowRight, Flame, FolderX, Loader2 } from "lucide-react"
@@ -16,11 +17,12 @@ export function FeaturedCompetitions({
 }: {
   referenceDate?: string
 }) {
+  const chainId = useChainId()
   const [category, setCategory] = useState<CompetitionCategory | "All">("All")
 
   const { data: competitions = [], isLoading } = useQuery({
     queryKey: ["competitions-public"],
-    queryFn: () => fetchCompetitions(null),
+    queryFn: () => fetchCompetitions(chainId, null),
   })
 
   const featured = competitions.slice(0, 3)

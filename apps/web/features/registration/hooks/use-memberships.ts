@@ -18,10 +18,18 @@ export function useMemberships() {
       }
     }
 
-        if (
-      pathname?.startsWith("/organization") ||
-      pathname?.includes("/join-team") ||
-      pathname?.startsWith("/my-competition")
+    // Dashboard now uses GET /chains/:chainId/teams (fetchMyTeamsResult) — must NOT hit legacy GET /users/me/dashboard
+    // Fallback to window.location when pathname is null during hydration
+    const effectivePath =
+      pathname ??
+      (typeof window !== "undefined" ? window.location.pathname : "")
+    if (
+      effectivePath.startsWith("/organization") ||
+      effectivePath.includes("/join-team") ||
+      effectivePath.startsWith("/my-competition") ||
+      effectivePath.startsWith("/profile") ||
+      effectivePath.startsWith("/competition") ||
+      effectivePath.startsWith("/dashboard")
     ) {
       setMemberships([])
       setReady(true)
@@ -84,10 +92,17 @@ export function useMemberships() {
   }, [pathname])
 
   useEffect(() => {
+    // Keep in sync with reloadMemberships guard above (with hydration fallback)
+    const effectivePath =
+      pathname ??
+      (typeof window !== "undefined" ? window.location.pathname : "")
     if (
-      pathname?.startsWith("/organization") ||
-      pathname?.includes("/join-team") ||
-      pathname?.startsWith("/my-competition")
+      effectivePath.startsWith("/organization") ||
+      effectivePath.includes("/join-team") ||
+      effectivePath.startsWith("/my-competition") ||
+      effectivePath.startsWith("/profile") ||
+      effectivePath.startsWith("/competition") ||
+      effectivePath.startsWith("/dashboard")
     ) {
       setMemberships([])
       setReady(true)
@@ -130,7 +145,7 @@ export function useMemberships() {
   }
 
   function renameTeam(competitionSlug: string, name: string): boolean {
-    if (!name.trim() || name.trim().length > 24) return false
+    if (!name.trim() || name.trim().length > 30) return false
     setMemberships((prev) =>
       prev.map((item) =>
         item.competitionSlug === competitionSlug ||

@@ -2,7 +2,7 @@ import type { Competition } from "@/features/competitions/types"
 import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors"
 import { TOKENS } from "@/lib/tokens"
 import type { PreviewMembership } from "@/features/registration/types"
-import type { ApiUserDashboardData } from "@/lib/competitions-api"
+import type { ApiPrizeDeposit, ApiUserDashboardData } from "@/lib/competitions-api"
 import {
   formatTokenPrize,
   type ApiTokenPrizeData,
@@ -29,17 +29,74 @@ export const phaseBadges: Record<DashboardPhase, string> = {
   claim: "Phase 5 - Claim the Prize",
   closed: "Closed",
 }
+export function getPoolLabel(phase: DashboardPhase): string {
+  switch (phase) {
+    case "claim":
+      return "Available to Claim"
+    case "closed":
+      return "Award Allocations"
+    case "registration":
+      return "Prize Pool Capacity"
+    default:
+      return "Contract Escrow Pool"
+  }
+}
+
 export function formatTokenPrizeLabel(
-  tokenPrize?: ApiTokenPrizeData | null
+  tokenPrize?: ApiTokenPrizeData | null,
+  decimals?: number,
+  symbol?: string
 ): string | null {
   if (!tokenPrize) return null
   return formatTokenPrize(
     tokenPrize.total_prize,
     tokenPrize.token_address,
     undefined,
-    18,
-    tokenPrize.symbol || tokenPrize.token_symbol || undefined
+    decimals,
+    symbol || tokenPrize.symbol || tokenPrize.token_symbol || undefined
   )
+}
+
+export function getFirstPrizeDepositRaw(deposits?: ApiPrizeDeposit[] | null): string | null {
+  if (!deposits || deposits.length === 0) return null
+  const first = deposits[0]
+  if (!first) return null
+  const raw = String((first as any).amount ?? "").trim()
+  if (!raw || !/^\d+$/.test(raw) || raw === "0") return null
+  try {
+    // Validate BigInt (supports 78-digit uint256) and ensure non-zero
+    const bi = BigInt(raw)
+    return bi === 0n ? null : bi.toString()
+  } catch {
+    return null
+  }
+}
+
+export function sumPrizeDepositsRaw(deposits?: ApiPrizeDeposit[] | null): string | null {
+  if (!deposits || deposits.length === 0) return null
+  try {
+    let sum = 0n
+    for (const d of deposits) {
+      const raw = String(d.amount ?? "").trim()
+      if (!raw || !/^\d+$/.test(raw)) continue
+      sum += BigInt(raw)
+    }
+    return sum === 0n ? null : sum.toString()
+  } catch {
+    return null
+  }
+}
+
+export function formatPrizeDepositsLabel(
+  deposits?: ApiPrizeDeposit[] | null,
+  decimals?: number,
+  symbol?: string
+): string | null {
+  // Prize Pool Capacity = prize_deposits[0].amount (per spec), not sum
+  const firstRaw = getFirstPrizeDepositRaw(deposits)
+  if (!firstRaw) return null
+  const tokenAddress = deposits?.[0]?.token_address || deposits?.find((d) => Boolean(d.token_address))?.token_address || null
+  return formatTokenPrize(firstRaw, tokenAddress, undefined, decimals, symbol)
 }
 export function mergeDashboardCompetitions(
   fixtures: readonly DashboardCompetition[],
@@ -49,6 +106,7 @@ export function mergeDashboardCompetitions(
 ): DashboardCompetition[] {
   const entries: DashboardCompetition[] = fixtures.map((entry) => ({
     ...entry,
+    poolLabel: getPoolLabel(entry.phase),
   }))
 
   function resolveComp(slugOrId?: string | null) {
@@ -70,17 +128,13 @@ export function mergeDashboardCompetitions(
       }
 
       if (
-        local.competitionId &&
-        item.competitionId &&
-        local.competitionId === item.competitionId
-      ) {
-        return true
-      }
-
-      if (
-        local.competitionSlug &&
-        item.competitionSlug &&
-        local.competitionSlug === item.competitionSlug
+        item.source === "fixture" &&
+        ((local.competitionId &&
+          item.competitionId &&
+          local.competitionId === item.competitionId) ||
+          (local.competitionSlug &&
+            item.competitionSlug &&
+            local.competitionSlug === item.competitionSlug))
       ) {
         return true
       }
@@ -114,6 +168,8 @@ export function mergeDashboardCompetitions(
         phase = "closed"
       }
 
+      const poolLabel = getPoolLabel(phase)
+
       const local: DashboardCompetition = {
         id: m.teamId,
         competitionId,
@@ -128,7 +184,9 @@ export function mergeDashboardCompetitions(
         memberCount: m.memberCount,
         amountUsd: competition ? getPrizeTotal(competition) : 0,
         currency: competition?.currency || TOKENS.USDT.symbol,
-        poolLabel: "Contract Escrow Pool",
+        tokenAddress: competition?.fee_token_address || null,
+        onchainCompetitionId: competition?.onchainCompetitionId || null,
+        poolLabel,
         actionLabel: "Open Workspace",
         source: "local",
         pending: false,
@@ -163,7 +221,9 @@ export function mergeDashboardCompetitions(
         memberCount: null,
         amountUsd: competition ? getPrizeTotal(competition) : 0,
         currency: competition?.currency || TOKENS.USDT.symbol,
-        poolLabel: "Contract Escrow Pool",
+        tokenAddress: competition?.fee_token_address || null,
+        onchainCompetitionId: competition?.onchainCompetitionId || null,
+        poolLabel: getPoolLabel("registration"),
         actionLabel: "View Competition",
         source: "local",
         pending: true,
@@ -180,9 +240,7 @@ export function mergeDashboardCompetitions(
     const competition =
       resolveComp(membership.competitionSlug) ||
       resolveComp(membership.competitionId)
-    const rawComp = membership.rawTeam?.competition
-
-    if (!competition && !rawComp) continue
+    const rawComp: any = (membership.rawTeam as any)?.competition || (membership.rawTeam as any)?.team?.competition || null
 
     const competitionId =
       competition?.id || rawComp?.id || membership.competitionId || null
@@ -229,7 +287,20 @@ export function mergeDashboardCompetitions(
       membership.rawTeam?.team_roles?.length ??
       (membership.role === "lead" ? 1 : null)
 
-    const tokenPrize = formatTokenPrizeLabel(membership.rawTeam?.token_prize)
+    const prizeDeposits: ApiPrizeDeposit[] | null = (rawComp as any)?.prize_deposits || (membership.rawTeam as any)?.team?.competition?.prize_deposits || null
+    // Spec: Prize Pool Capacity = prize_deposits[0].amount (single entry), not sum
+    const prizeDepositsTotalRaw = getFirstPrizeDepositRaw(prizeDeposits)
+    const prizeDepositsTokenAddress = prizeDeposits?.[0]?.token_address || prizeDeposits?.find((d) => Boolean(d.token_address))?.token_address || null
+    // Prefer on-chain prize_deposits[0] amount; legacy token_prize kept as fallback when deposits empty
+    const tokenPrize = prizeDepositsTotalRaw
+      ? formatTokenPrize(prizeDepositsTotalRaw, prizeDepositsTokenAddress)
+      : formatTokenPrizeLabel(membership.rawTeam?.token_prize)
+    const tokenAddress =
+      prizeDepositsTokenAddress ||
+      membership.rawTeam?.token_prize?.token_address ||
+      rawComp?.fee_token_address ||
+      competition?.fee_token_address ||
+      null
 
     const local: DashboardCompetition = {
       id: membership.teamId || `local-${membership.competitionSlug}`,
@@ -245,8 +316,13 @@ export function mergeDashboardCompetitions(
       memberCount,
       amountUsd: competition ? getPrizeTotal(competition) : 0,
       currency: competition?.currency || TOKENS.USDT.symbol,
+      tokenAddress,
+      onchainCompetitionId: rawComp?.competition_id || competition?.onchainCompetitionId || null,
+      rawTokenPrize: membership.rawTeam?.token_prize || null,
+      prizeDeposits,
+      prizeDepositsTotalRaw,
+      poolLabel: getPoolLabel(phase),
       tokenPrizeFormatted: tokenPrize,
-      poolLabel: "Contract Escrow Pool",
       actionLabel:
         membership.status === "pending" ? "View Competition" : "Open Workspace",
       source: "local",

@@ -54,11 +54,19 @@ const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
 
+export const DEFAULT_CHAIN_ID = 968
+export function resolveChainId(chainId?: number | null): number {
+  if (typeof chainId === "number" && Number.isInteger(chainId) && chainId > 0) return chainId
+  return DEFAULT_CHAIN_ID
+}
+
 export async function updateMyProfile(
   token: string,
-  payload: UpdateProfilePayload
+  payload: UpdateProfilePayload,
+  chainId?: number
 ): Promise<ApiProfileResponse> {
-  const response = await fetch(`${API_BASE_URL}/profiles/me`, {
+  const resolvedChainId = resolveChainId(chainId)
+  const response = await fetch(`${API_BASE_URL}/chains/${resolvedChainId}/profiles/me`, {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json",

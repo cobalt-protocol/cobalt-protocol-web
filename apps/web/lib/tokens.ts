@@ -11,7 +11,7 @@ export const TOKENS = {
     name: "USDT",
     symbol: "USDT",
     address: "0x75edC9335175Fc0552D51D48439F229c10420fe3",
-    decimals: 18,
+    decimals: 6,
     isNative: false,
   },
   BOT: {
@@ -61,5 +61,8 @@ export function getTokenSymbol(
   if (token) {
     return token.symbol
   }
-  return TOKENS.USDT.symbol
+  // Unknown ERC-20 token: resolve the symbol on-chain via
+  // useDynamicTokenInfo / convertTokenOnChain instead of assuming a
+  // hardcoded stablecoin symbol.
+  return ""
 }

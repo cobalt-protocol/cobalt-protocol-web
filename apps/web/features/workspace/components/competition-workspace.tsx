@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { useQuery } from "@tanstack/react-query"
 import { useRouter } from "next/navigation"
-import { useAccount } from "wagmi"
+import { useAccount, useChainId } from "wagmi"
 import {
   fetchTeamCompetitionDetailResult,
   fetchTeamMembersResult,
@@ -32,6 +32,7 @@ export function CompetitionWorkspace({
   teamId?: string
 }) {
   const router = useRouter()
+  const chainId = useChainId()
   const { isConnected, status: accountStatus } = useAccount()
 
   // Token sesi disimpan di localStorage (client-only). Baca dulu sebelum
@@ -60,8 +61,8 @@ export function CompetitionWorkspace({
     isFetched: isCompFetched,
     isLoading: isCompLoading,
   } = useQuery({
-    queryKey: ["team-competition", teamId],
-    queryFn: () => (teamId ? fetchTeamCompetitionDetailResult(teamId) : null),
+    queryKey: ["team-competition", chainId, teamId],
+    queryFn: () => (teamId ? fetchTeamCompetitionDetailResult(chainId, teamId) : null),
     enabled: Boolean(teamId),
   })
 
@@ -69,8 +70,8 @@ export function CompetitionWorkspace({
     data: teamMembersResult,
     isFetched: isMembersFetched,
   } = useQuery({
-    queryKey: ["team-members", teamId],
-    queryFn: () => (teamId ? fetchTeamMembersResult(teamId) : null),
+    queryKey: ["team-members", chainId, teamId],
+    queryFn: () => (teamId ? fetchTeamMembersResult(chainId, teamId) : null),
     enabled: Boolean(teamId),
   })
 
