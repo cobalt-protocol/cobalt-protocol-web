@@ -214,8 +214,8 @@ export function CompetitionCard({
       </div>
       <div className="p-5">
         <p className="text-xs text-muted-foreground">
-          {formatNumber(competition.participants)} participants ·{" "}
-          {formatNumber(competition.teamCount)} teams
+          {formatNumber(competition.total_participant ?? competition.participants)} participants ·{" "}
+          {formatNumber(competition.total_teams ?? competition.teamCount)} teams
         </p>
         <div className="my-4 flex items-end justify-between gap-3">
           <div>

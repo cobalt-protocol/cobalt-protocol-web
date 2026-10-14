@@ -207,8 +207,8 @@ export function CompetitionOverview({
           <>
             <CompetitionActions competition={competition} />
             <p className="mt-4 text-xs text-muted-foreground">
-              ● {formatNumber(competition.participants)} participants ·{" "}
-              {competition.teamCount} teams
+              ● {formatNumber(competition.total_participant ?? competition.participants)} participants ·{" "}
+              {formatNumber(competition.total_teams ?? competition.teamCount)} teams
             </p>
             <Link
               href={routes.workspace(competition.id)}

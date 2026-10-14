@@ -53,6 +53,8 @@ export interface Competition {
   endsAt: string
   participants: number
   teamCount: number
+  total_participant?: number
+  total_teams?: number
   maxTeamSize: number
   currency: string
   prizes: readonly Prize[]

@@ -65,6 +65,9 @@ export interface ApiCompetition {
   total?: number | null
   token?: string | null
   user_id?: string | null
+  total_teams?: number | null
+  total_participant?: number | null
+  teams?: any[]
 }
 
 export interface ApiCompetitionsResponse {
@@ -497,8 +500,18 @@ export function mapApiCompetitionToCompetition(
       apiComp.result_announcement ||
       apiComp.submission_deadline ||
       new Date().toISOString(),
-    participants: 0,
-    teamCount: 0,
+    participants:
+      typeof apiComp.total_participant === "number"
+        ? apiComp.total_participant
+        : 0,
+    teamCount:
+      typeof apiComp.total_teams === "number" ? apiComp.total_teams : 0,
+    total_participant:
+      typeof apiComp.total_participant === "number"
+        ? apiComp.total_participant
+        : 0,
+    total_teams:
+      typeof apiComp.total_teams === "number" ? apiComp.total_teams : 0,
     maxTeamSize: computedMaxTeamSize,
     currency: getTokenSymbol(prizeCurrencyTokenAddress),
     prizes,
