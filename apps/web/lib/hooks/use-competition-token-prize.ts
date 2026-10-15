@@ -2,12 +2,8 @@ import { useReadContract, useChainId } from "wagmi"
 import { isAddress, getAddress } from "viem"
 import CompetitionManagerABI from "@/abi/CompetitionManager.json"
 
-export const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as const
-
-export function getCompetitionContractAddress(): `0x${string}` {
-  const _rawCompEnv = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '').trim().replace(/^['"]|['"]$/g, '').trim()
-  return (_rawCompEnv && isAddress(_rawCompEnv) ? getAddress(_rawCompEnv) : DEPLOYED_COMPETITION) as `0x${string}`
-}
+import { getCompetitionContractAddress } from "@/lib/contracts"
+export { getCompetitionContractAddress }
 
 export function useCompetitionTokenPrize(onchainCompetitionId?: string | number | bigint | null) {
   const chainId = useChainId()

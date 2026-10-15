@@ -7,6 +7,7 @@ import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
 import { useSiteActions } from "@/components/layout/site-actions"
 import CompetitionManagerABI from "@/abi/CompetitionManager.json"
 import { fetchParticipantCertificateSignature, fetchWinnerCertificateSignature, fetchMyParticipantMinted } from "@/lib/competitions-api"
+import { getCompetitionContractAddress } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
 const KNOWN_CERT_ERRORS = [
@@ -83,7 +84,7 @@ function friendlyCertificateError(name: string | null, fallback: string): string
     case "CertificateAlreadyClaimed": return "Sertifikat sudah di-mint untuk wallet/team/CID ini. Kamu sudah claim — tidak bisa mint dua kali (soulbound)."
     case "WinnerAlreadyClaimed": return "Hadiah/sertifikat winner sudah di-claim untuk wallet ini."
     case "CompetitionNotEnded": return "Kompetisi belum berakhir on-chain. Mint baru dibuka setelah waktu prizeCertificateClaim tercapai."
-    case "CompetitionDoesNotExist": return "Kompetisi tidak ditemukan on-chain. Cek onchainCompetitionId dan alamat kontrak (harusnya 0xD9e…e44 di BotChain 968)."
+    case "CompetitionDoesNotExist": return "Kompetisi tidak ditemukan on-chain. Cek onchainCompetitionId dan alamat NEXT_PUBLIC_COMPETITION_CONTRACT di .env."
     case "InvalidTeamId": return "Team ID tidak valid (0). Pastikan team sudah benar."
     case "InvalidSignature": return "Signature tidak valid — signer API tidak cocok dengan signerAddress di kontrak. Pastikan wallet yang mint sama dengan wallet yang minta signature, dan onchainCompetitionId / teamId / CID persis sama dengan yang di-hash API (CID raw tanpa ipfs://)."
     case "ECDSAInvalidSignature":
@@ -194,16 +195,7 @@ export function WorkspaceAnnouncements({
   )
   const isMinting = isMintPending || isMintConfirming
   const isWinnerMinting = isWinnerPending || isWinnerConfirming
-  // Address must match CompetitionManager deployed contract for signature verification
-  // keccak256(abi.encodePacked(address(this), msg.sender, _competitionId, _teamId, _cid))
-  // Canonical deployed CompetitionManager on BotChain testnet (scan.bohr.life)
-  const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as `0x${string}`
-  const rawContractEnv =
-    process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || ""
-  const normalizedEnv = rawContractEnv.trim().replace(/^['"]|['"]$/g, "").trim()
-  const competitionContractAddress: `0x${string}` = (
-    normalizedEnv && isAddress(normalizedEnv) ? getAddress(normalizedEnv) : DEPLOYED_COMPETITION
-  ) as `0x${string}`
+  const competitionContractAddress = getCompetitionContractAddress()
 
   const handleMintParticipantCertificate = async () => {
     setParticipantMintError(null)

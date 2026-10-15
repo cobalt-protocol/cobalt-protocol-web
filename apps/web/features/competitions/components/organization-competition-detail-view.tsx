@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useQuery } from '@tanstack/react-query';
 import { useChainId } from "wagmi"
 import { getAddress, isAddress } from "viem"
+import { getCompetitionContractAddress, getTreasuryPrizeContractAddress } from "@/lib/contracts"
 import {
   BookOpen,
   ChevronRight,
@@ -188,10 +189,8 @@ export function OrganizationCompetitionDetailView({
     ? `${startDateLabel} - ${endDateLabel}`
     : "Apr 20 - May 05, 2025";
 
-  const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as const
-  const _rawComp = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || "").trim().replace(/^['"]|['"]$/g, "").trim()
-  const competitionContractAddress: `0x${string}` = (_rawComp && isAddress(_rawComp) ? getAddress(_rawComp) : DEPLOYED_COMPETITION) as `0x${string}`
-  const treasuryPrizeContractAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT || process.env.TREASURY_PRIZE_CONTRACT || '0x501c3E1eB0059609Df8DE7bf06e70598e68F2d97';
+  const competitionContractAddress = getCompetitionContractAddress();
+  const treasuryPrizeContractAddress = getTreasuryPrizeContractAddress() || competitionContractAddress;
 
   const explorerBaseUrl = 'https://scan.bohr.life';
   const competitionTxUrl = `${explorerBaseUrl}/tx/${txHash}`;

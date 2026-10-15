@@ -6,6 +6,7 @@ import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-reac
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { parseEther, parseUnits, getAddress, isAddress } from 'viem';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
+import { getCompetitionContractAddress } from '@/lib/contracts';
 import {
     Select,
     SelectContent,
@@ -441,9 +442,7 @@ export default function CreateCompetition() {
 
     const guidebookInputRef = useRef<HTMLInputElement>(null);
 
-    const DEPLOYED_COMPETITION = '0xD9e56794a88F4Ad06B46d6e13712900103AC1e44' as const;
-    const _rawCompEnv = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || '').trim().replace(/^['"]|['"]$/g, '').trim();
-    const competitionContractAddress: `0x${string}` = (_rawCompEnv && isAddress(_rawCompEnv) ? getAddress(_rawCompEnv) : DEPLOYED_COMPETITION) as `0x${string}`;
+    const competitionContractAddress = getCompetitionContractAddress();
 
     const explorerBaseUrl = (chain?.blockExplorers?.default?.url || 'https://scan.bohr.life').replace(/\/$/, '');
 

@@ -11,6 +11,7 @@ import { routes } from "@/lib/routes"
 import { generateNonce, verifySignature, getMe, type User, type UserRole } from "@/lib/auth-api"
 import { mapApiProfileToBuilderProfile } from "@/lib/profile-api"
 import { createCompetitionTeam, getStoredToken } from "@/lib/competitions-api"
+import { getCompetitionContractAddress } from "@/lib/contracts"
 import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly, signMessageWithViem } from "@/lib/wagmi"
 import { toast } from "@/hooks/use-toast"
 import {
@@ -87,12 +88,7 @@ async function executePaidTeamCreation({
 
   const onchainId = BigInt(competition.onchainCompetitionId)
 
-  const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as `0x${string}`
-  const rawContractEnv = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || ""
-  const normalizedEnv = rawContractEnv.trim().replace(/^['"]|['"]$/g, "").trim()
-  const competitionContractAddress: `0x${string}` = (
-    normalizedEnv && isAddress(normalizedEnv) ? getAddress(normalizedEnv) : DEPLOYED_COMPETITION
-  ) as `0x${string}`
+  const competitionContractAddress = getCompetitionContractAddress()
 
   if (!publicClient) return { error: "Public client not available" }
 
@@ -878,12 +874,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
     if (dialog.competition.onchainCompetitionId && publicClient) {
       try {
-        const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as `0x${string}`
-        const rawContractEnv = process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || ""
-        const normalizedEnv = rawContractEnv.trim().replace(/^['"]|['"]$/g, "").trim()
-        const competitionContractAddress: `0x${string}` = (
-          normalizedEnv && isAddress(normalizedEnv) ? getAddress(normalizedEnv) : DEPLOYED_COMPETITION
-        ) as `0x${string}`
+        const competitionContractAddress = getCompetitionContractAddress()
 
         const contractComp: any = await publicClient.readContract({
           address: competitionContractAddress,

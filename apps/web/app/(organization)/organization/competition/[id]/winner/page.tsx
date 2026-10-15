@@ -6,6 +6,7 @@ import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt 
 import { useQuery } from '@tanstack/react-query';
 import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchOrganizationTeamsByCompetitionId, fetchSetWinnerSignature } from '@/lib/competitions-api';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
+import { getCompetitionContractAddress } from '@/lib/contracts';
 import { useToast } from "@/hooks/use-toast";
 import { getAddress, isAddress, decodeErrorResult } from 'viem';
 import { ChevronRight, Loader2 } from 'lucide-react';
@@ -175,9 +176,7 @@ export default function DetermineWinner() {
             }
 
             // 2. Call Smart Contract
-            const DEPLOYED_COMPETITION = "0xD9e56794a88F4Ad06B46d6e13712900103AC1e44" as const;
-            const _rawComp = (process.env.NEXT_PUBLIC_COMPETITION_CONTRACT || process.env.COMPETITION_CONTRACT || "").trim().replace(/^['"]|['"]$/g, "").trim();
-            const competitionContractAddress: `0x${string}` = (_rawComp && isAddress(_rawComp) ? getAddress(_rawComp) : DEPLOYED_COMPETITION) as `0x${string}`;
+            const competitionContractAddress = getCompetitionContractAddress();
 
             await writeContractAsync({
                 address: competitionContractAddress,
