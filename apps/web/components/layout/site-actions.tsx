@@ -82,25 +82,55 @@ async function executePaidTeamCreation({
   effectiveAddress,
   publicClient,
   writeContractAsync,
-}: ExecutePaidTeamParams): Promise<{ error?: string; isFreeOnchain?: boolean }> {
+}: ExecutePaidTeamParams): Promise<{ error?: string; isFreeOnchain?: boolean; txHash?: string }> {
   if (!effectiveAddress) return { error: "Wallet not connected" }
   if (!competition.onchainCompetitionId) return { error: "Invalid onchain competition ID" }
 
   const onchainId = BigInt(competition.onchainCompetitionId)
-
   const competitionContractAddress = getCompetitionContractAddress()
 
   if (!publicClient) return { error: "Public client not available" }
 
-  let rawToken = competition.fee_token_address || "0x0000000000000000000000000000000000000000"
-  let feeTokenAddress: `0x${string}` = "0x0000000000000000000000000000000000000000"
-  if (rawToken && isAddress(rawToken)) {
-    try {
-      feeTokenAddress = getAddress(rawToken) as `0x${string}`
-    } catch (err) {}
+  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as `0x${string}`
+  let feeTokenAddress: `0x${string}` = ZERO_ADDRESS
+  let feeAmount = 0n
+
+  // Attempt to read payment details directly from smart contract to ensure 1:1 sync
+  try {
+    const contractComp: any = await publicClient.readContract({
+      address: competitionContractAddress,
+      abi: CompetitionManagerABI as any,
+      functionName: "competitions",
+      args: [onchainId],
+    })
+    const payment = contractComp?.payment ?? contractComp?.[6]
+    if (payment) {
+      const tFee = typeof payment === "object" && payment !== null ? (payment.fee ?? payment[1]) : null
+      const tToken = typeof payment === "object" && payment !== null ? (payment.tokenAddress ?? payment[0]) : null
+      if (tFee !== undefined && tFee !== null) {
+        feeAmount = BigInt(tFee.toString())
+      }
+      if (tToken && isAddress(tToken)) {
+        feeTokenAddress = getAddress(tToken) as `0x${string}`
+      }
+    }
+  } catch (err) {
+    console.warn("Failed to read onchain competition payment, falling back to competition object:", err)
+    if (competition.fee) {
+      try {
+        feeAmount = BigInt(competition.fee.toString())
+      } catch {
+        feeAmount = 0n
+      }
+    }
+    const rawToken = competition.fee_token_address || ZERO_ADDRESS
+    if (rawToken && isAddress(rawToken)) {
+      try {
+        feeTokenAddress = getAddress(rawToken) as `0x${string}`
+      } catch {}
+    }
   }
 
-  const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as `0x${string}`
   let isNative = false
   try {
     isNative =
@@ -116,55 +146,78 @@ async function executePaidTeamCreation({
     feeTokenAddress = ZERO_ADDRESS
   }
 
-  let tokenDecimals = 18
-  if (!isNative && publicClient) {
-    try {
-      tokenDecimals = (await publicClient.readContract({
-        address: feeTokenAddress,
-        abi: [{ name: "decimals", type: "function", inputs: [], outputs: [{ type: "uint8" }] }] as const,
-        functionName: "decimals"
-      })) as number
-    } catch (_) {
-      tokenDecimals = 18 // Fallback
-    }
-  }
-
-  let feeAmount = 0n
-  try {
-    if (competition.fee) {
-      feeAmount = BigInt(competition.fee.toString())
-    }
-  } catch {
-    feeAmount = 0n
-  }
-
-  let validRecipient: `0x${string}` | null = null
-  let rawRecip: any = (competition as any).organizationAddress || ""
-  if (rawRecip && isAddress(rawRecip)) {
-    validRecipient = getAddress(rawRecip) as `0x${string}`
-  }
-
-  if (!validRecipient || validRecipient === "0x0000000000000000000000000000000000000000") {
-    try {
-      const ownerAddr: any = await publicClient.readContract({
-        address: competitionContractAddress,
-        abi: CompetitionManagerABI as any,
-        functionName: "owner",
-      })
-      if (typeof ownerAddr === "string" && isAddress(ownerAddr)) {
-        validRecipient = getAddress(ownerAddr) as `0x${string}`
-      }
-    } catch (err) {}
-  }
-
-  if (!validRecipient || validRecipient === "0x0000000000000000000000000000000000000000") {
-    return { error: "Invalid competition recipient address." }
-  }
-
   if (feeAmount <= 0n) {
     return { isFreeOnchain: true }
   }
 
+  const erc20Abi = [
+    { name: "symbol", type: "function", inputs: [], outputs: [{ type: "string" }] },
+    { name: "decimals", type: "function", inputs: [], outputs: [{ type: "uint8" }] },
+    { name: "balanceOf", type: "function", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] },
+    { name: "allowance", type: "function", inputs: [{ name: "_owner", type: "address" }, { name: "_spender", type: "address" }], outputs: [{ name: "", type: "uint256" }] },
+    { name: "approve", type: "function", inputs: [{ name: "_spender", type: "address" }, { name: "_value", type: "uint256" }], outputs: [{ name: "", type: "bool" }] },
+  ] as const
+
+  // Pre-flight balance validation
+  if (isNative) {
+    try {
+      const nativeBalance = await publicClient.getBalance({ address: getAddress(effectiveAddress) })
+      if (nativeBalance < feeAmount) {
+        return { error: `Saldo BOT tidak mencukupi untuk pendaftaran. Diperlukan ${formatUnits(feeAmount, 18)} BOT.` }
+      }
+    } catch (err) {
+      // ignore
+    }
+  } else {
+    try {
+      const tokenBalance = (await publicClient.readContract({
+        address: feeTokenAddress,
+        abi: erc20Abi,
+        functionName: "balanceOf",
+        args: [getAddress(effectiveAddress)],
+      })) as bigint
+
+      if (tokenBalance < feeAmount) {
+        let sym = "Token"
+        let dec = 18
+        try {
+          sym = (await publicClient.readContract({ address: feeTokenAddress, abi: erc20Abi, functionName: "symbol" })) as string
+          dec = (await publicClient.readContract({ address: feeTokenAddress, abi: erc20Abi, functionName: "decimals" })) as number
+        } catch (_) {}
+        return { error: `Saldo ${sym} tidak mencukupi. Diperlukan ${formatUnits(feeAmount, dec)} ${sym}, saldo Anda ${formatUnits(tokenBalance, dec)} ${sym}.` }
+      }
+    } catch (err) {
+      // ignore
+    }
+  }
+
+  // Pre-flight allowance check & approval for ERC20
+  if (!isNative) {
+    try {
+      const allowance = (await publicClient.readContract({
+        address: feeTokenAddress,
+        abi: erc20Abi,
+        functionName: "allowance",
+        args: [getAddress(effectiveAddress), competitionContractAddress],
+      })) as bigint
+
+      if (allowance < feeAmount) {
+        const approveTx = await writeContractAsync({
+          address: feeTokenAddress,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [competitionContractAddress, feeAmount],
+        })
+        if (publicClient) {
+          await publicClient.waitForTransactionReceipt({ hash: approveTx })
+        }
+      }
+    } catch (err: any) {
+      return { error: `Token approval failed: ${parseContractError(err)}` }
+    }
+  }
+
+  // Pin team metadata to IPFS
   const metadata = {
     name: input.name.trim(),
     visibility: input.visibility === "public",
@@ -187,66 +240,7 @@ async function executePaidTeamCreation({
   }
   if (!cid) return { error: "Failed to get CID from IPFS" }
 
-  // Pre-flight validation for balance
-  if (isNative) {
-    try {
-      const nativeBalance = await publicClient.getBalance({ address: getAddress(effectiveAddress) })
-      if (nativeBalance < feeAmount) {
-        return { error: `Saldo BOT tidak mencukupi untuk pendaftaran. Diperlukan ${formatUnits(feeAmount, 18)} BOT.` }
-      }
-    } catch (err) {
-      // ignore
-    }
-  } else {
-    try {
-      const erc20Abi = [
-        { name: "symbol", type: "function", inputs: [], outputs: [{ type: "string" }] },
-        { name: "decimals", type: "function", inputs: [], outputs: [{ type: "uint8" }] },
-        { name: "balanceOf", type: "function", inputs: [{ type: "address" }], outputs: [{ type: "uint256" }] }
-      ] as const
-      const tokenBalance = await publicClient.readContract({
-        address: feeTokenAddress,
-        abi: erc20Abi,
-        functionName: "balanceOf",
-        args: [getAddress(effectiveAddress)],
-      }) as bigint
-
-      if (tokenBalance < feeAmount) {
-        let sym = "Token"
-        let dec = 18
-        try {
-          sym = (await publicClient.readContract({ address: feeTokenAddress, abi: erc20Abi, functionName: "symbol" })) as string
-          dec = (await publicClient.readContract({ address: feeTokenAddress, abi: erc20Abi, functionName: "decimals" })) as number
-        } catch (_) {}
-        return { error: `Saldo ${sym} tidak mencukupi. Diperlukan ${formatUnits(feeAmount, dec)} ${sym}, saldo Anda ${formatUnits(tokenBalance, dec)} ${sym}.` }
-      }
-    } catch (err) {
-      // ignore
-    }
-  }
-
-  if (!isNative) {
-    try {
-      const allowance: any = await publicClient?.readContract({
-        address: feeTokenAddress,
-        abi: [{ constant: true, inputs: [{ name: "_owner", type: "address" }, { name: "_spender", type: "address" }], name: "allowance", outputs: [{ name: "", type: "uint256" }], payable: false, stateMutability: "view", type: "function" }] as any,
-        functionName: "allowance",
-        args: [effectiveAddress as `0x${string}`, competitionContractAddress],
-      })
-      if (BigInt(allowance) < feeAmount) {
-        const approveTx = await writeContractAsync({
-          address: feeTokenAddress,
-          abi: [{ constant: false, inputs: [{ name: "_spender", type: "address" }, { name: "_value", type: "uint256" }], name: "approve", outputs: [{ name: "", type: "bool" }], payable: false, stateMutability: "nonpayable", type: "function" }] as any,
-          functionName: "approve",
-          args: [competitionContractAddress, feeAmount],
-        })
-        if (publicClient) await publicClient.waitForTransactionReceipt({ hash: approveTx })
-      }
-    } catch (err: any) {
-      return { error: `Token approval failed: ${parseContractError(err)}` }
-    }
-  }
-
+  // Execute paymentCreateTeam on CompetitionManager with exactly (_competitionId, cid)
   try {
     const txHash = await writeContractAsync({
       address: competitionContractAddress,
@@ -255,25 +249,20 @@ async function executePaidTeamCreation({
       args: [
         onchainId,
         cid,
-        feeTokenAddress,
-        getAddress(effectiveAddress),
-        validRecipient,
-        feeAmount,
       ],
       value: isNative ? feeAmount : 0n,
     })
-    
+
     if (publicClient) {
       const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash })
       if (receipt.status === "reverted") {
         throw new Error("Transaction reverted on-chain")
       }
     }
+    return { txHash }
   } catch (err: any) {
     return { error: parseContractError(err) }
   }
-
-  return {}
 }
 interface SiteActions {
   profile: BuilderProfile
