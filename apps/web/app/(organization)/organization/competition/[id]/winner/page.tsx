@@ -1,15 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
+import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
 import { useQuery } from '@tanstack/react-query';
-import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchOrganizationTeamsByCompetitionId, fetchSetWinnerSignature } from '@/lib/competitions-api';
+import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchOrganizationTeamsByCompetitionIdResult, fetchSetWinnerSignature, ApiTeam } from '@/lib/competitions-api';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
 import { getCompetitionContractAddress } from '@/lib/contracts';
 import { useToast } from "@/hooks/use-toast";
-import { getAddress, isAddress, decodeErrorResult } from 'viem';
-import { ChevronRight, Loader2 } from 'lucide-react';
+import { getAddress, isAddress, decodeErrorResult, BaseError } from 'viem';
+import { ChevronRight, Loader2, AlertCircle } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
 const ChevronDownIcon = () => (
@@ -24,6 +24,167 @@ const CheckCircleIcon = () => (
     </svg>
 );
 
+const KNOWN_WINNER_ERRORS = [
+    "AmountZero",
+    "CertificateAlreadyClaimed",
+    "CertificateNonTransferable",
+    "CompetitionDoesNotExist",
+    "CompetitionNotEnded",
+    "ECDSAInvalidSignature",
+    "ECDSAInvalidSignatureLength",
+    "ECDSAInvalidSignatureS",
+    "ERC721IncorrectOwner",
+    "ERC721InsufficientApproval",
+    "ERC721InvalidApprover",
+    "ERC721InvalidOperator",
+    "ERC721InvalidOwner",
+    "ERC721InvalidReceiver",
+    "ERC721InvalidSender",
+    "ERC721NonexistentToken",
+    "FeeOptionNotFound",
+    "IncorrectFeeAmount",
+    "IncorrectNativeAmount",
+    "InsufficientCompetitionPrize",
+    "InsufficientPrizeBalance",
+    "InvalidEndTime",
+    "InvalidFormation",
+    "InvalidRecipient",
+    "InvalidSignature",
+    "InvalidTeamId",
+    "MustHaveWinner",
+    "NativeFromMismatch",
+    "NotAllWinnersRecorded",
+    "NotOrganization",
+    "OwnableInvalidOwner",
+    "OwnableUnauthorizedAccount",
+    "PriceFeeNotFound",
+    "PrizeAmountZero",
+    "PrizeTokenMismatch",
+    "PrizesAlreadyDistributed",
+    "PrizesNotDistributed",
+    "TokenAlreadyDeactivated",
+    "TokenAlreadyListed",
+    "TokenNotActive",
+    "TokenNotListed",
+    "TransferFailed",
+    "TreasuryDoesNotExist",
+    "WinnerAlreadyClaimed",
+    "WinnerDoesNotExist",
+    "WinnerMismatch",
+    "WithdrawTooEarly",
+] as const;
+
+function extractHexData(err: any): string[] {
+    const out: string[] = [];
+    const seen = new Set<any>();
+    const queue: any[] = [err];
+    let depth = 0;
+    while (queue.length && depth < 50) {
+        const cur = queue.shift();
+        depth++;
+        if (!cur || seen.has(cur)) continue;
+        seen.add(cur);
+        if (typeof cur === "string") {
+            const m = cur.match(/0x[0-9a-fA-F]{8,}/g);
+            if (m) out.push(...m);
+            continue;
+        }
+        if (typeof cur === "object") {
+            try {
+                if (cur instanceof BaseError) {
+                    const walked: any = (cur as any).walk?.((e: any) => (e as any)?.data || (e as any)?.cause?.data);
+                    if (walked?.data && typeof walked.data === "string" && walked.data.startsWith("0x")) out.push(walked.data);
+                }
+            } catch {}
+            for (const k of ["data", "cause", "error", "details", "message", "shortMessage", "metaMessages", "args", "reason"]) {
+                const v = (cur as any)[k];
+                if (!v) continue;
+                if (typeof v === "string" && v.startsWith("0x") && v.length >= 10) out.push(v);
+                else if (typeof v === "string") {
+                    const m = v.match(/0x[0-9a-fA-F]{8,}/g);
+                    if (m) out.push(...m);
+                } else if (Array.isArray(v)) queue.push(...v);
+                else if (typeof v === "object") queue.push(v);
+            }
+            try {
+                const s = String((cur as any).message || (cur as any).shortMessage || "");
+                const m2 = s.match(/0x[0-9a-fA-F]{8,}/g);
+                if (m2) out.push(...m2);
+            } catch {}
+        }
+    }
+    return [...new Set(out)].sort((a, b) => b.length - a.length);
+}
+
+function decodeWinnerErrorName(err: any): string | null {
+    const hexes = extractHexData(err);
+    for (const hex of hexes) {
+        try {
+            const decoded: any = decodeErrorResult({ abi: CompetitionManagerABI as any, data: hex as `0x${string}` });
+            if (decoded?.errorName) return decoded.errorName as string;
+        } catch {}
+    }
+    const msg = String(err?.shortMessage || err?.message || err?.cause?.message || err?.cause?.cause?.message || err?.details || "");
+    for (const n of KNOWN_WINNER_ERRORS) {
+        if (msg.includes(n)) return n;
+    }
+    if (/user rejected|user denied|rejected the request/i.test(msg)) return "UserRejected";
+    if (/insufficient funds/i.test(msg)) return "InsufficientFunds";
+    return null;
+}
+
+function friendlyWinnerError(name: string | null, fallback: string): string {
+    const cleanFallback = fallback.replace(/0x[0-9a-fA-F]{10,}/g, "[custom error]").slice(0, 500);
+    switch (name) {
+        case "UserRejected":
+            return "Transaksi dibatalkan — kamu menutup / menolak popup MetaMask.";
+        case "InsufficientFunds":
+            return "Saldo tidak cukup untuk biaya gas transaksi.";
+        case "WinnerAlreadyClaimed":
+            return "Pemenang sudah di-set untuk kategori/slot ini atau sudah di-claim oleh partisipan.";
+        case "WinnerDoesNotExist":
+            return "Kategori pemenang (winner ID) tidak ditemukan di smart contract on-chain.";
+        case "WinnerMismatch":
+            return "Winner tidak cocok dengan kompetisi atau team ID yang dipilih.";
+        case "NotOrganization":
+            return "Akses ditolak: Hanya wallet organization penyelenggara kompetisi yang berhak menetapkan pemenang.";
+        case "InvalidRecipient":
+            return "Alamat wallet penerima / pemenang tidak valid atau 0x0.";
+        case "InvalidSignature":
+            return "Signature tidak valid — signer API tidak cocok dengan signerAddress di kontrak CompetitionManager.";
+        case "ECDSAInvalidSignature":
+        case "ECDSAInvalidSignatureLength":
+        case "ECDSAInvalidSignatureS":
+            return "Verifikasi ECDSA gagal — signature tidak cocok dengan signer resmi.";
+        case "CompetitionDoesNotExist":
+            return "Kompetisi tidak ditemukan on-chain. Cek onchainCompetitionId dan alamat kontrak di .env.";
+        case "CompetitionNotEnded":
+            return "Kompetisi belum berakhir on-chain. Penentuan pemenang hanya dapat dilakukan setelah kompetisi selesai.";
+        case "PrizesAlreadyDistributed":
+            return "Hadiah untuk kompetisi ini sudah didistribusikan sebelumnya.";
+        case "PrizesNotDistributed":
+            return "Hadiah kompetisi belum didistribusikan.";
+        case "NotAllWinnersRecorded":
+            return "Belum semua pemenang tercatat untuk kompetisi ini.";
+        case "InsufficientPrizeBalance":
+        case "InsufficientCompetitionPrize":
+            return "Saldo hadiah di treasury kontrak tidak mencukupi.";
+        case "PrizeTokenMismatch":
+            return "Token hadiah tidak sesuai dengan konfigurasi kompetisi.";
+        case "AmountZero":
+        case "PrizeAmountZero":
+            return "Nominal hadiah tidak boleh nol.";
+        case "InvalidTeamId":
+            return "Team ID tidak valid. Pastikan tim sudah benar.";
+        case "MustHaveWinner":
+            return "Kompetisi harus memiliki pemenang.";
+        case "WithdrawTooEarly":
+            return "Penarikan terlalu dini — periode tunggu belum terlewati.";
+        default:
+            return cleanFallback || "Transaksi gagal di blockchain. Cek console browser untuk detail.";
+    }
+}
+
 interface CategoryItem {
     id: string | number;
     name: string;
@@ -35,7 +196,8 @@ export default function DetermineWinner() {
     const params = useParams();
     const compId = (params?.id as string) || '';
     const chainId = useChainId()
-    const { isConnected, status: accountStatus } = useAccount();
+    const { address, isConnected, status: accountStatus } = useAccount();
+    const publicClient = usePublicClient();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
 
@@ -57,11 +219,18 @@ export default function DetermineWinner() {
     });
 
     // Owner-only: GET /api/v1/chains/:chainId/competitions/:id/teams/organization (Bearer JWT) — returns all teams (public+private)
-    const { data: allTeams = [], isLoading: isLoadingTeams } = useQuery({
+    const { data: teamsData, isLoading: isLoadingTeams } = useQuery({
         queryKey: ["organization-competition-teams", chainId, compId, storedToken],
-        queryFn: () => fetchOrganizationTeamsByCompetitionId(chainId, compId, storedToken || getStoredToken()),
+        queryFn: () => fetchOrganizationTeamsByCompetitionIdResult(chainId, compId, storedToken || getStoredToken()),
         enabled: Boolean(compId && storedToken),
     });
+
+    const allTeams = useMemo<ApiTeam[]>(() => {
+        if (!teamsData) return [];
+        if (Array.isArray(teamsData)) return teamsData;
+        if (Array.isArray((teamsData as any).data)) return (teamsData as any).data;
+        return [];
+    }, [teamsData]);
 
     // wagmi sempat berstatus "connecting"/"reconnecting" sesaat saat hard
     // refresh sebelum wallet selesai di-restore. Jika kita menilai role di
@@ -90,6 +259,7 @@ export default function DetermineWinner() {
     const [categories, setCategories] = useState<CategoryItem[]>([]);
     const [winnerSet, setWinnerSet] = useState<Record<string | number, boolean>>({});
     const [isSettingWinner, setIsSettingWinner] = useState<Record<string | number, boolean>>({});
+    const [winnerErrors, setWinnerErrors] = useState<Record<string | number, string | null>>({});
     const { toast } = useToast();
     
     const { writeContractAsync } = useWriteContract();
@@ -138,17 +308,21 @@ export default function DetermineWinner() {
     }
 
     const handleAssignTeam = (categoryId: string | number, teamId: number | string) => {
+        setWinnerErrors((prev) => ({ ...prev, [categoryId]: null }));
         setCategories((prev) =>
             prev.map((c) => (String(c.id) === String(categoryId) ? { ...c, teamId } : c))
         );
     };
 
     const handleSetWinner = async (categoryId: string | number) => {
+        setWinnerErrors((prev) => ({ ...prev, [categoryId]: null }));
         const teamId = categories.find((c) => String(c.id) === String(categoryId))?.teamId;
         if (!teamId) {
+            const noTeamMsg = "Silakan pilih tim untuk kategori ini sebelum menetapkan pemenang.";
+            setWinnerErrors((prev) => ({ ...prev, [categoryId]: noTeamMsg }));
             toast({
-                title: "No team selected",
-                description: "Please select a team for this category before setting the winner.",
+                title: "Belum ada tim yang dipilih",
+                description: noTeamMsg,
                 variant: "destructive"
             });
             return;
@@ -166,17 +340,49 @@ export default function DetermineWinner() {
             const onchainCompetitionId = (data as any)?.competition_onchain_id ?? data?.competition_id;
             const numericTeamId = data?.numeric_team_id;
 
-            if (!signature || !onchainWinnerId || !participant || !onchainCompetitionId || !numericTeamId) {
+            if (!signature || !onchainWinnerId || !participant || !onchainCompetitionId) {
                 throw new Error(sigResp?.message || "Incomplete signature payload from API.");
             }
-            // Guard: contract expects uint256 numeric strings — ULID will throw "Cannot convert ... to BigInt"
+            // Guard: contract expects uint256 numeric strings for winnerId and competitionId
             const numericRe = /^\d+$/;
-            if (!numericRe.test(String(onchainWinnerId)) || !numericRe.test(String(onchainCompetitionId)) || !numericRe.test(String(numericTeamId))) {
-                throw new Error(`Invalid numeric payload from API (expected competition_onchain_id numeric, got winner_id=${String(onchainWinnerId)} competition_onchain_id=${String(onchainCompetitionId)} numeric_team_id=${String(numericTeamId).slice(0, 20)}… — check API/contract address and chain)`);
+            if (!numericRe.test(String(onchainWinnerId)) || !numericRe.test(String(onchainCompetitionId))) {
+                throw new Error(`Invalid numeric payload from API (expected competition_onchain_id numeric, got winner_id=${String(onchainWinnerId)} competition_onchain_id=${String(onchainCompetitionId)} — check API/contract address and chain)`);
             }
 
             // 2. Call Smart Contract
             const competitionContractAddress = getCompetitionContractAddress();
+
+            // Pre-simulate to decode custom error before triggering MetaMask popup
+            if (publicClient && address) {
+                try {
+                    await publicClient.simulateContract({
+                        address: competitionContractAddress,
+                        abi: CompetitionManagerABI as any,
+                        functionName: "setWinner",
+                        args: [
+                            BigInt(onchainWinnerId),
+                            participant,
+                            BigInt(onchainCompetitionId),
+                            String(teamId),
+                            signature as `0x${string}`
+                        ],
+                        account: address as `0x${string}`,
+                    });
+                } catch (simErr: any) {
+                    const name = decodeWinnerErrorName(simErr);
+                    const raw = simErr?.shortMessage || simErr?.cause?.shortMessage || simErr?.message || "Simulate failed";
+                    const msg = friendlyWinnerError(name, raw);
+                    const full = `${name ? name + ": " : ""}${msg}`;
+                    console.error("[setWinner][simulate] revert", name, simErr);
+                    setWinnerErrors((prev) => ({ ...prev, [categoryId]: full }));
+                    toast({
+                        title: name ? `Gagal: ${name}` : "Gagal Menetapkan Pemenang",
+                        description: full,
+                        variant: "destructive",
+                    });
+                    return;
+                }
+            }
 
             await writeContractAsync({
                 address: competitionContractAddress,
@@ -186,11 +392,12 @@ export default function DetermineWinner() {
                     BigInt(onchainWinnerId),
                     participant,
                     BigInt(onchainCompetitionId),
-                    BigInt(numericTeamId),
+                    String(teamId),
                     signature as `0x${string}`
                 ]
             });
 
+            setWinnerErrors((prev) => ({ ...prev, [categoryId]: null }));
             setWinnerSet((prev) => ({ ...prev, [categoryId]: true }));
             toast({
                 title: "Winner Set Successfully",
@@ -198,30 +405,14 @@ export default function DetermineWinner() {
             });
         } catch (error: any) {
             console.error("Failed to set winner:", error);
-            let decoded: string | null = null;
-            try {
-                const d: string | undefined = error?.data || error?.cause?.data || error?.cause?.cause?.data;
-                if (d && typeof d === "string" && d.startsWith("0x") && d.length >= 10) {
-                    const r: any = decodeErrorResult({ abi: CompetitionManagerABI as any, data: d as `0x${string}` });
-                    if (r?.errorName) decoded = r.errorName as string;
-                }
-            } catch {}
-            if (!decoded) {
-                const m = String(error?.shortMessage || error?.message || error?.cause?.message || "");
-                for (const n of ["InvalidSignature","WinnerAlreadyClaimed","WinnerDoesNotExist","WinnerMismatch","InsufficientCompetitionPrize","CompetitionDoesNotExist","NotOrganization","ECDSAInvalidSignature","ECDSAInvalidSignatureLength","ECDSAInvalidSignatureS","PrizeTokenMismatch","AmountZero","InsufficientPrizeBalance","TreasuryDoesNotExist"]) if (m.includes(n)) { decoded = n; break; }
-            }
-            const map: Record<string,string> = {
-                InvalidSignature: "Invalid signature — signer mismatch or wrong chain/contract/ids. Ensure API PRIVATE_KEY_SIGNER matches CompetitionManager.signerAddress (NEXT_PRIVATE_KEY_SIGNER 0x289E…).",
-                WinnerAlreadyClaimed: "Winner already claimed for this competition/team/wallet.",
-                WinnerDoesNotExist: "Winner ID does not exist.",
-                WinnerMismatch: "Winner does not belong to this competition.",
-                NotOrganization: "Only the competition organization can set the winner.",
-                ECDSAInvalidSignature: "ECDSA recovery failed — signature not from signerAddress.",
-            };
-            const msg = decoded ? (map[decoded] || `${decoded}: ${error?.shortMessage || error?.message}`) : (error?.cause?.message || error?.shortMessage || error?.message || "Failed to set winner.");
+            const name = decodeWinnerErrorName(error);
+            const raw = error?.cause?.message || error?.shortMessage || error?.message || "Failed to set winner.";
+            const msg = friendlyWinnerError(name, raw);
+            const full = `${name ? name + ": " : ""}${msg}`;
+            setWinnerErrors((prev) => ({ ...prev, [categoryId]: full }));
             toast({
-                title: decoded ? `Failed: ${decoded}` : "Failed to Set Winner",
-                description: msg,
+                title: name ? `Gagal: ${name}` : "Gagal Menetapkan Pemenang",
+                description: full,
                 variant: "destructive",
             });
         } finally {
@@ -293,62 +484,79 @@ export default function DetermineWinner() {
                             ) : (
                                 categories.map((category) => {
                                     const isSet = Boolean(winnerSet[category.id]);
+                                    const err = winnerErrors[category.id];
                                     return (
-                                        <tr key={category.id} className="border-b border-slate-100 last:border-0">
-                                            <td className="py-4 pr-4">
-                                                <span className="font-semibold text-slate-800">{category.name}</span>
-                                            </td>
-                                            <td className="py-4 pr-4">
-                                                <div className="relative max-w-xs">
-                                                    <select
-                                                        value={category.teamId}
-                                                        onChange={(e) => handleAssignTeam(category.id, e.target.value)}
-                                                        className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 px-4 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
-                                                    >
-                                                        {isLoadingTeams ? (
-                                                            <option value="" disabled>Loading teams...</option>
-                                                        ) : allTeams.length === 0 ? (
-                                                            <option value="" disabled>No teams found</option>
-                                                        ) : (
-                                                            allTeams.map((team) => (
-                                                                <option key={team.id} value={team.id}>
-                                                                    {team.name}
-                                                                </option>
-                                                            ))
-                                                        )}
-                                                    </select>
-                                                    <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
-                                                        <ChevronDownIcon />
+                                        <React.Fragment key={category.id}>
+                                            <tr className={`border-b border-slate-100 ${err ? 'border-b-0' : 'last:border-0'}`}>
+                                                <td className="py-4 pr-4">
+                                                    <span className="font-semibold text-slate-800">{category.name}</span>
+                                                </td>
+                                                <td className="py-4 pr-4">
+                                                    <div className="relative max-w-xs">
+                                                        <select
+                                                            value={category.teamId}
+                                                            onChange={(e) => handleAssignTeam(category.id, e.target.value)}
+                                                            disabled={isSet || Boolean(isSettingWinner[category.id])}
+                                                            className="w-full appearance-none bg-white border border-slate-200 text-slate-700 py-2.5 px-4 pr-8 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer disabled:bg-slate-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {isLoadingTeams ? (
+                                                                <option value="" disabled>Loading teams...</option>
+                                                            ) : !Array.isArray(allTeams) || allTeams.length === 0 ? (
+                                                                <option value="" disabled>No teams found</option>
+                                                            ) : (
+                                                                allTeams.map((team) => (
+                                                                    <option key={team.id} value={team.id}>
+                                                                        {team.name}
+                                                                    </option>
+                                                                ))
+                                                            )}
+                                                        </select>
+                                                        <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
+                                                            <ChevronDownIcon />
+                                                        </div>
                                                     </div>
-                                                </div>
-                                            </td>
-                                            <td className="py-4 text-right">
-                                                {isSet ? (
-                                                    <button
-                                                        disabled
-                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-4 py-2.5 text-xs font-medium text-emerald-700 cursor-default"
-                                                    >
-                                                        Winner Set
-                                                        <CheckCircleIcon />
-                                                    </button>
-                                                ) : (
-                                                    <button
-                                                        disabled={Boolean(isSettingWinner[category.id])}
-                                                        onClick={() => handleSetWinner(category.id)}
-                                                        className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                                                    >
-                                                        {isSettingWinner[category.id] ? (
-                                                            <>
-                                                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                                                                <span>Setting...</span>
-                                                            </>
-                                                        ) : (
-                                                            <span>Set Winner</span>
-                                                        )}
-                                                    </button>
-                                                )}
-                                            </td>
-                                        </tr>
+                                                </td>
+                                                <td className="py-4 text-right">
+                                                    {isSet ? (
+                                                        <button
+                                                            disabled
+                                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-50 px-4 py-2.5 text-xs font-medium text-emerald-700 cursor-default"
+                                                        >
+                                                            Winner Set
+                                                            <CheckCircleIcon />
+                                                        </button>
+                                                    ) : (
+                                                        <button
+                                                            disabled={Boolean(isSettingWinner[category.id])}
+                                                            onClick={() => handleSetWinner(category.id)}
+                                                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-[#2563EB] px-4 py-2.5 text-xs font-medium text-white hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                                                        >
+                                                            {isSettingWinner[category.id] ? (
+                                                                <>
+                                                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                                                    <span>Setting...</span>
+                                                                </>
+                                                            ) : (
+                                                                <span>Set Winner</span>
+                                                            )}
+                                                        </button>
+                                                    )}
+                                                </td>
+                                            </tr>
+                                            {err ? (
+                                                <tr className="border-b border-slate-100 last:border-0 bg-red-50/40">
+                                                    <td colSpan={3} className="pt-0 pb-3 px-2">
+                                                        <div role="alert" className="flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50/90 p-3 text-xs leading-5 text-red-700 shadow-xs">
+                                                            <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                                                            <div className="flex-1">
+                                                                <span className="font-semibold text-red-800 mr-1.5">Gagal menetapkan pemenang:</span>
+                                                                <span>{err}</span>
+                                                            </div>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ) : null}
+                                        </React.Fragment>
                                     );
                                 })
                             )}

@@ -216,8 +216,7 @@ export function WorkspaceAnnouncements({
       if (!onchainCompetitionId || !/^\d+$/.test(onchainCompetitionId)) {
         throw new Error("The competition does not have a valid on-chain competition ID.")
       }
-      const numericTeamId = deriveNumericTeamId(teamId)
-      console.debug("[mintParticipant] chainId", effectiveChainId, "contract", competitionContractAddress, "connectedAddress", connectedAddress, "onchainCompetitionId", onchainCompetitionId, "teamId", teamId, "numericTeamId", String(numericTeamId), "cid", cid, "sig", signature?.slice(0, 20) + "…")
+      console.debug("[mintParticipant] chainId", effectiveChainId, "contract", competitionContractAddress, "connectedAddress", connectedAddress, "onchainCompetitionId", onchainCompetitionId, "teamId", teamId, "cid", cid, "sig", signature?.slice(0, 20) + "…")
 
       // Pre-simulate biar custom error 0x ke-decode SEBELUM popup MetaMask.
       // Kalau simulate revert, kita tampilkan pesan jelas tanpa trigger MM 0x.
@@ -227,7 +226,7 @@ export function WorkspaceAnnouncements({
             address: competitionContractAddress,
             abi: CompetitionManagerABI as any,
             functionName: "safeMintCertificateParticipant",
-            args: [BigInt(onchainCompetitionId), numericTeamId, signature as `0x${string}`, cid as string],
+            args: [BigInt(onchainCompetitionId), String(teamId), signature as `0x${string}`, cid as string],
             account: connectedAddress as `0x${string}`,
           })
         } catch (simErr: any) {
@@ -246,7 +245,7 @@ export function WorkspaceAnnouncements({
         address: competitionContractAddress,
         abi: CompetitionManagerABI as any,
         functionName: "safeMintCertificateParticipant",
-        args: [BigInt(onchainCompetitionId), numericTeamId, signature as `0x${string}`, cid as string],
+        args: [BigInt(onchainCompetitionId), String(teamId), signature as `0x${string}`, cid as string],
       })
     } catch (error: any) {
       const status: number | undefined =

@@ -34,18 +34,24 @@ function SubmissionEditor({
   teamId,
   chainId,
   onSuccess,
+  onClear,
 }: {
   initialDraft: SubmissionDraft
   onSave: (draft: SubmissionDraft) => boolean
   teamId?: string
   chainId?: number
   onSuccess?: () => void
+  onClear?: () => void
 }) {
   const [draft, setDraft] = useState(initialDraft)
   const [file, setFile] = useState<File | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [feedback, setFeedback] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    setDraft(initialDraft)
+  }, [initialDraft])
   function selectFile(next: File | undefined) {
     if (!next) return
     const error = validateSubmissionFile(next)
@@ -106,7 +112,15 @@ function SubmissionEditor({
       }
 
       setFeedback(`Project submission successful! Document CID: ${cid}`)
-      onSave(draft)
+
+      // Jika berhasil dengan status code 201, bersihkan state form, file, dan local draft
+      if (result.status === 201 || result.success) {
+        setDraft(emptySubmission)
+        setFile(null)
+        if (inputRef.current) inputRef.current.value = ""
+        onSave(emptySubmission)
+      }
+
       onSuccess?.()
     } catch (err: any) {
       setFeedback(
@@ -216,6 +230,22 @@ function SubmissionEditor({
         </div>
       </div>
       <div className="mt-5 flex flex-wrap justify-end gap-3">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-10 text-muted-foreground hover:text-red-600"
+          disabled={isSubmitting}
+          onClick={() => {
+            setDraft(emptySubmission)
+            setFile(null)
+            if (inputRef.current) inputRef.current.value = ""
+            onSave(emptySubmission)
+            onClear?.()
+            setFeedback("Form cleared.")
+          }}
+        >
+          Clear Form
+        </Button>
         <Button
           type="button"
           variant="secondary"
@@ -335,11 +365,22 @@ export function SubmissionForm({
   const [isEditing, setIsEditing] = useState(false)
   const { connected } = useSiteActions()
   const queryClient = useQueryClient()
+  const draftKey = `cobalt:submission:${competitionId}:${teamId || "default"}:v1`
+  const legacyDraftKey = `cobalt:submission:${competitionId}:v1`
+
   const { value, save, ready } = useBrowserDraft(
-    `cobalt:submission:${competitionId}:v1`,
+    draftKey,
     emptySubmission,
     isSubmissionDraft
   )
+
+  const handleClearDraft = () => {
+    save(emptySubmission)
+    try {
+      window.localStorage.removeItem(draftKey)
+      window.localStorage.removeItem(legacyDraftKey)
+    } catch {}
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -354,9 +395,19 @@ export function SubmissionForm({
     enabled: Boolean(teamId),
   })
 
-  if (!mounted || !connected) return null
-
   const existingSubmission = submissionResult?.data
+
+  // Jika submission sudah tercatat di database, bersihkan draft lokal yang tersisa
+  useEffect(() => {
+    if (existingSubmission) {
+      try {
+        window.localStorage.removeItem(draftKey)
+        window.localStorage.removeItem(legacyDraftKey)
+      } catch {}
+    }
+  }, [existingSubmission, draftKey, legacyDraftKey])
+
+  if (!mounted || !connected) return null
 
   const initialDraft: SubmissionDraft = existingSubmission
     ? {
@@ -404,12 +455,14 @@ export function SubmissionForm({
             </div>
           )}
           <SubmissionEditor
-            key={`${competitionId}-${existingSubmission?.id || "new"}`}
+            key={`${competitionId}-${teamId || "default"}-${existingSubmission?.id || "new"}`}
             initialDraft={initialDraft}
             onSave={save}
+            onClear={handleClearDraft}
             teamId={teamId}
             chainId={chainId}
             onSuccess={() => {
+              handleClearDraft()
               queryClient.invalidateQueries({
                 queryKey: ["team-submission", chainId, teamId],
               })

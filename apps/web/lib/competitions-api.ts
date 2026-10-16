@@ -2199,8 +2199,9 @@ export async function fetchOrganizationTeamsByCompetitionIdResult(
       { method: "GET", headers, cache: "no-store" }
     )
     if (res.ok) {
-      const j: ApiTeamsResponse = await res.json()
-      return { status: res.status, data: (j.data as ApiTeam[] | null) || [] }
+      const j: any = await res.json()
+      const list = Array.isArray(j) ? j : (Array.isArray(j?.data) ? j.data : [])
+      return { status: res.status, data: list }
     }
     let errorMessage = `HTTP ${res.status}`
     try {
@@ -2224,7 +2225,8 @@ export async function fetchOrganizationTeamsByCompetitionId(
   let token: string | null | undefined
   if (typeof chainIdOrId === "number") { chainId = resolveChainId(chainIdOrId); id = idOrToken as string; token = tokenMaybe; } else { chainId = DEFAULT_CHAIN_ID; id = chainIdOrId as string; token = idOrToken as any; }
   const result = await fetchOrganizationTeamsByCompetitionIdResult(chainId, id, token)
-  return result.data || []
+  const list = result?.data
+  return Array.isArray(list) ? list : []
 }
 
 /**
@@ -2519,14 +2521,16 @@ export async function submitTeamProjectSubmissionApi(
     if (!res.ok) {
       return {
         success: false,
+        status: res.status,
         error: json.message || "Failed to submit project",
       }
     }
 
-    return { success: true, data: json.data }
+    return { success: true, status: res.status, data: json.data }
   } catch (err: any) {
     return {
       success: false,
+      status: 500,
       error: err?.message || "An unexpected error occurred",
     }
   }
