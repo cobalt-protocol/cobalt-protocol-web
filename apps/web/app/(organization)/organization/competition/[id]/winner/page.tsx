@@ -9,6 +9,7 @@ import {
     getStoredToken,
     fetchPrizeWinnersByCompetitionId,
     fetchParticipantWinnersByCompetitionId,
+    fetchPrizeDistributedByCompetitionId,
     fetchOrganizationTeamsByCompetitionIdResult,
     fetchSetWinnerSignature,
     fetchApiCompetitionById,
@@ -271,6 +272,14 @@ export default function DetermineWinner() {
         enabled: Boolean(publicClient && onchainCompetitionId),
     });
 
+    // Prize already distributed per indexed prize_distributed table (API returns 404 -> [] when none)
+    const { data: prizeDistributedRows = [], refetch: refetchPrizeDistributedRows } = useQuery({
+        queryKey: ["prize-distributed-api", chainId, compId],
+        queryFn: () => fetchPrizeDistributedByCompetitionId(chainId, compId),
+        enabled: Boolean(compId),
+    });
+    const isPrizeDistributedIndexed = prizeDistributedRows.length > 0;
+
     const allTeams = useMemo<ApiTeam[]>(() => {
         if (!teamsData) return [];
         if (Array.isArray(teamsData)) return teamsData;
@@ -447,6 +456,7 @@ export default function DetermineWinner() {
             queryClient.invalidateQueries({ queryKey: ["participant-winners", compId] });
             queryClient.invalidateQueries({ queryKey: ["prize-winners", compId] });
             refetchDistributed?.();
+            refetchPrizeDistributedRows?.();
         } catch (error: any) {
             console.error("Failed to distribute prizes:", error);
             const name = decodeWinnerErrorName(error);
@@ -624,7 +634,7 @@ export default function DetermineWinner() {
                         <button
                             type="button"
                             onClick={handleDistributePrize}
-                            disabled={isDistributingPrize}
+                            disabled={isDistributingPrize || isPrizeDistributedIndexed || isAlreadyDistributed}
                             className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isDistributingPrize ? (
@@ -808,7 +818,7 @@ export default function DetermineWinner() {
                     <button
                         type="button"
                         onClick={handleDistributePrize}
-                        disabled={isDistributingPrize}
+                        disabled={isDistributingPrize || isPrizeDistributedIndexed || isAlreadyDistributed}
                         className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-emerald-600/20 transition-all shadow-xs cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                         {isDistributingPrize ? (

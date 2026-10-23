@@ -2609,6 +2609,36 @@ export async function fetchPrizeWinnersByCompetitionId(
   }
 }
 
+export interface ApiPrizeDistributed {
+  id: string
+  tx_hash: string
+  treasury_prize_id: string
+  competition_id: string
+  token_address: string
+  recipient: string
+  amount: string
+  created_at: string
+}
+
+// GET /api/v1/chains/:chainId/competitions/:id/prize-distributed
+// Returns rows from prize_distributed; 404 (-> empty array here) when none exist yet.
+export async function fetchPrizeDistributedByCompetitionId(
+  chainId: number,
+  id: string
+): Promise<ApiPrizeDistributed[]> {
+  try {
+    const res = await fetch(
+      `${API_BASE_URL}/chains/${resolveChainId(chainId)}/competitions/${encodeURIComponent(id)}/prize-distributed`,
+      { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" }
+    )
+    if (!res.ok) return []
+    const json = await res.json()
+    return Array.isArray(json?.data) ? json.data : []
+  } catch {
+    return []
+  }
+}
+
 export interface ApiParticipantWinner {
   id: string
   tx_hash: string
