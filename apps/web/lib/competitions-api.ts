@@ -2609,6 +2609,97 @@ export async function fetchPrizeWinnersByCompetitionId(
   }
 }
 
+export interface ApiParticipantWinner {
+  id: string
+  tx_hash: string
+  participant: string
+  title: string
+  competition_id: string
+  prize_winner_id?: string | null
+  created_at: string
+  updated_at?: string | null
+  deleted_at?: string | null
+  user?: {
+    id: string
+    wallet_address: string
+    username?: string | null
+    email?: string | null
+    location?: string | null
+    institution?: string | null
+  } | null
+  prize_winner?: {
+    id: string
+    winner_id?: string | null
+    category?: string | null
+    amount?: string | null
+    certificate_cid?: string | null
+  } | null
+  team?: {
+    id: string
+    name: string
+    visibility?: boolean
+    description?: string
+  } | null
+}
+
+export interface ApiParticipantWinnersResponse {
+  data: ApiParticipantWinner[]
+  message?: string
+  errors?: any
+}
+
+export async function fetchParticipantWinnersByCompetitionId(
+  chainIdOrId: number | string,
+  idOrToken?: string | null,
+  tokenMaybe?: string | null
+): Promise<ApiParticipantWinner[]> {
+  let chainId: number
+  let id: string
+  let token: string | null | undefined
+  if (typeof chainIdOrId === "number") {
+    chainId = resolveChainId(chainIdOrId)
+    id = idOrToken as string
+    token = tokenMaybe
+  } else {
+    chainId = DEFAULT_CHAIN_ID
+    id = chainIdOrId as string
+    token = idOrToken as any
+  }
+
+  if (!id) return []
+
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (authToken) {
+      headers["Authorization"] = authToken.startsWith("Bearer ")
+        ? authToken
+        : `Bearer ${authToken}`
+    }
+
+    const res = await fetch(
+      `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(id)}/participant-winners`,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      }
+    )
+
+    if (!res.ok) {
+      return []
+    }
+
+    const json: ApiParticipantWinnersResponse = await res.json()
+    return Array.isArray(json.data) ? json.data : []
+  } catch {
+    return []
+  }
+}
+
 /* ── participant-minted certificates (team-scoped) ──────────────────────────
  * API: GET /users/me/certificates/team/:teamId/participant-minted
  * Controller: cobalt-protocol-api/src/modules/certificate/certificate.controller.ts

@@ -3,13 +3,22 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
-import { useQuery } from '@tanstack/react-query';
-import { fetchApiMe, getStoredToken, fetchPrizeWinnersByCompetitionId, fetchOrganizationTeamsByCompetitionIdResult, fetchSetWinnerSignature, ApiTeam } from '@/lib/competitions-api';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+    fetchApiMe,
+    getStoredToken,
+    fetchPrizeWinnersByCompetitionId,
+    fetchParticipantWinnersByCompetitionId,
+    fetchOrganizationTeamsByCompetitionIdResult,
+    fetchSetWinnerSignature,
+    fetchApiCompetitionById,
+    ApiTeam,
+    ApiParticipantWinner
+} from '@/lib/competitions-api';
 import CompetitionManagerABI from '@/abi/CompetitionManager.json';
 import { getCompetitionContractAddress } from '@/lib/contracts';
 import { useToast } from "@/hooks/use-toast";
-import { getAddress, isAddress, decodeErrorResult, BaseError } from 'viem';
-import { ChevronRight, Loader2, AlertCircle } from 'lucide-react';
+import { ChevronRight, Loader2, AlertCircle, Coins } from 'lucide-react';
 
 // Komponen Ikon SVG sederhana agar tidak perlu install library eksternal
 const ChevronDownIcon = () => (
@@ -189,6 +198,7 @@ interface CategoryItem {
     id: string | number;
     name: string;
     teamId: number | string;
+    teamName?: string;
 }
 
 export default function DetermineWinner() {
@@ -198,6 +208,7 @@ export default function DetermineWinner() {
     const chainId = useChainId()
     const { address, isConnected, status: accountStatus } = useAccount();
     const publicClient = usePublicClient();
+    const queryClient = useQueryClient();
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
 
@@ -218,11 +229,46 @@ export default function DetermineWinner() {
         enabled: Boolean(compId && storedToken),
     });
 
+    const { data: participantWinners = [], isLoading: isLoadingParticipantWinners } = useQuery({
+        queryKey: ["participant-winners", compId, storedToken],
+        queryFn: () => fetchParticipantWinnersByCompetitionId(chainId, compId, storedToken || getStoredToken()),
+        enabled: Boolean(compId && storedToken),
+    });
+
     // Owner-only: GET /api/v1/chains/:chainId/competitions/:id/teams/organization (Bearer JWT) — returns all teams (public+private)
     const { data: teamsData, isLoading: isLoadingTeams } = useQuery({
         queryKey: ["organization-competition-teams", chainId, compId, storedToken],
         queryFn: () => fetchOrganizationTeamsByCompetitionIdResult(chainId, compId, storedToken || getStoredToken()),
         enabled: Boolean(compId && storedToken),
+    });
+
+    const { data: competitionData } = useQuery({
+        queryKey: ["competition-detail", chainId, compId, storedToken],
+        queryFn: () => fetchApiCompetitionById(chainId, compId, storedToken || getStoredToken()),
+        enabled: Boolean(compId),
+    });
+
+    const onchainCompetitionId = competitionData?.competition_id || (/^\d+$/.test(compId) ? compId : null);
+
+    const { data: isAlreadyDistributed = false, refetch: refetchDistributed } = useQuery({
+        queryKey: ["prizes-distributed", chainId, onchainCompetitionId],
+        queryFn: async () => {
+            if (!publicClient || !onchainCompetitionId) return false;
+            try {
+                const competitionContractAddress = getCompetitionContractAddress();
+                const distributed = await publicClient.readContract({
+                    address: competitionContractAddress,
+                    abi: CompetitionManagerABI as any,
+                    functionName: "prizesDistributed",
+                    args: [BigInt(onchainCompetitionId)],
+                });
+                return Boolean(distributed);
+            } catch (e) {
+                console.error("Failed to check prizesDistributed:", e);
+                return false;
+            }
+        },
+        enabled: Boolean(publicClient && onchainCompetitionId),
     });
 
     const allTeams = useMemo<ApiTeam[]>(() => {
@@ -260,6 +306,7 @@ export default function DetermineWinner() {
     const [winnerSet, setWinnerSet] = useState<Record<string | number, boolean>>({});
     const [isSettingWinner, setIsSettingWinner] = useState<Record<string | number, boolean>>({});
     const [winnerErrors, setWinnerErrors] = useState<Record<string | number, string | null>>({});
+    const [isDistributingPrize, setIsDistributingPrize] = useState(false);
     const { toast } = useToast();
     
     const { writeContractAsync } = useWriteContract();
@@ -271,32 +318,75 @@ export default function DetermineWinner() {
     useEffect(() => {
         if (prizeWinners) {
             if (prizeWinners.length > 0) {
+                const initialWinnerSet: Record<string | number, boolean> = {};
+
                 const mappedCategories: CategoryItem[] = prizeWinners.map((pw, index) => {
                     const existing = categories.find((c) => String(c.id) === String(pw.id));
-                    const matchingTeam = pw.winner
+
+                    // Match participant winner from table participant_winner
+                    const pWinner = participantWinners.find((pwItem: ApiParticipantWinner) => {
+                        if (!pwItem) return false;
+                        if (pwItem.prize_winner) {
+                            if (String(pwItem.prize_winner.id) === String(pw.id)) return true;
+                            if (pw.winner_id != null && String(pwItem.prize_winner.winner_id) === String(pw.winner_id)) return true;
+                            if (pwItem.prize_winner.category && pw.category && pwItem.prize_winner.category.trim().toLowerCase() === pw.category.trim().toLowerCase()) return true;
+                        }
+                        if (pwItem.prize_winner_id) {
+                            if (String(pwItem.prize_winner_id) === String(pw.id)) return true;
+                            if (pw.winner_id != null && String(pwItem.prize_winner_id) === String(pw.winner_id)) return true;
+                        }
+                        if (pwItem.title && pw.category && pwItem.title.trim().toLowerCase() === pw.category.trim().toLowerCase()) {
+                            return true;
+                        }
+                        return false;
+                    });
+
+                    const isAlreadyWon = Boolean(pw.winner || pWinner);
+                    if (isAlreadyWon) {
+                        initialWinnerSet[pw.id] = true;
+                    }
+
+                    const matchingTeam = (pWinner?.team?.id
+                        ? allTeams.find((t) => String(t.id) === String(pWinner.team?.id))
+                        : undefined) ||
+                        (pWinner?.user?.id
+                        ? allTeams.find((t) => t.user_id === pWinner.user?.id || t.team_roles?.some((r: any) => r.user_id === pWinner.user?.id))
+                        : undefined) ||
+                        (pWinner?.participant
+                        ? allTeams.find((t) =>
+                            t.user?.wallet_address?.toLowerCase() === pWinner.participant.toLowerCase() ||
+                            t.team_roles?.some((r: any) => r.user?.wallet_address?.toLowerCase() === pWinner.participant.toLowerCase())
+                          )
+                        : undefined) ||
+                        (pw.winner
                         ? allTeams.find((t) => t.user_id === pw.winner?.user_id || t.team_roles?.some((r: any) => r.user_id === pw.winner?.user_id))
-                        : undefined;
-                    const assignedTeamId = existing?.teamId || matchingTeam?.id || allTeams[index]?.id || allTeams[0]?.id || '';
+                        : undefined);
+
+                    const winningTeamId = pWinner?.team?.id || matchingTeam?.id;
+                    const winningTeamName = pWinner?.team?.name || matchingTeam?.name;
+
+                    const assignedTeamId = isAlreadyWon && winningTeamId
+                        ? winningTeamId
+                        : existing?.teamId || winningTeamId || allTeams[index]?.id || allTeams[0]?.id || '';
+
+                    const assignedTeamName = isAlreadyWon && winningTeamName
+                        ? winningTeamName
+                        : existing?.teamName || winningTeamName || allTeams.find((t) => String(t.id) === String(assignedTeamId))?.name || '';
+
                     return {
                         id: pw.id,
                         name: pw.category,
                         teamId: assignedTeamId,
+                        teamName: assignedTeamName,
                     };
                 });
                 setCategories(mappedCategories);
-
-                const initialWinnerSet: Record<string | number, boolean> = {};
-                prizeWinners.forEach((pw) => {
-                    if (Boolean(pw.winner)) {
-                        initialWinnerSet[pw.id] = true;
-                    }
-                });
                 setWinnerSet((prev) => ({ ...initialWinnerSet, ...prev }));
             } else {
                 setCategories([]);
             }
         }
-    }, [prizeWinners, allTeams]);
+    }, [prizeWinners, participantWinners, allTeams]);
 
     if (isChecking || !isOrganizationRole) {
         return (
@@ -309,9 +399,68 @@ export default function DetermineWinner() {
 
     const handleAssignTeam = (categoryId: string | number, teamId: number | string) => {
         setWinnerErrors((prev) => ({ ...prev, [categoryId]: null }));
+        const selectedTeam = allTeams.find((t) => String(t.id) === String(teamId));
         setCategories((prev) =>
-            prev.map((c) => (String(c.id) === String(categoryId) ? { ...c, teamId } : c))
+            prev.map((c) => (String(c.id) === String(categoryId) ? { ...c, teamId, teamName: selectedTeam?.name } : c))
         );
+    };
+
+    const allWinnersSet = categories.length > 0 && categories.every((c) => Boolean(winnerSet[c.id]));
+    const setWinnersCount = categories.filter((c) => Boolean(winnerSet[c.id])).length;
+
+    const handleDistributePrize = async () => {
+        setIsDistributingPrize(true);
+        try {
+            let targetCompId = onchainCompetitionId || competitionData?.competition_id;
+            if (!targetCompId && !/^\d+$/.test(compId)) {
+                try {
+                    const fetched = await fetchApiCompetitionById(chainId, compId, storedToken || getStoredToken());
+                    targetCompId = fetched?.competition_id;
+                } catch {}
+            }
+            const finalId = targetCompId || compId;
+
+            const competitionContractAddress = getCompetitionContractAddress();
+
+            const tx = await writeContractAsync({
+                address: competitionContractAddress,
+                abi: CompetitionManagerABI as any,
+                functionName: "distributePrizes",
+                args: [BigInt(finalId)],
+            });
+
+            toast({
+                title: "Transaksi Distribusi Terkirim",
+                description: "Transaksi distributePrizes sedang dikonfirmasi di blockchain...",
+            });
+
+            if (publicClient && tx) {
+                await publicClient.waitForTransactionReceipt({ hash: tx });
+            }
+
+            toast({
+                title: "Hadiah Berhasil Didistribusikan!",
+                description: "Fungsi distributePrizes berhasil dieksekusi di blockchain.",
+            });
+
+            queryClient.invalidateQueries({ queryKey: ["prizes-distributed", chainId, onchainCompetitionId] });
+            queryClient.invalidateQueries({ queryKey: ["participant-winners", compId] });
+            queryClient.invalidateQueries({ queryKey: ["prize-winners", compId] });
+            refetchDistributed?.();
+        } catch (error: any) {
+            console.error("Failed to distribute prizes:", error);
+            const name = decodeWinnerErrorName(error);
+            const raw = error?.cause?.message || error?.shortMessage || error?.message || "Gagal mendistribusikan hadiah.";
+            const msg = friendlyWinnerError(name, raw);
+            const full = `${name ? name + ": " : ""}${msg}`;
+            toast({
+                title: name ? `Gagal: ${name}` : "Gagal Mendistribusikan Hadiah",
+                description: full,
+                variant: "destructive",
+            });
+        } finally {
+            setIsDistributingPrize(false);
+        }
     };
 
     const handleSetWinner = async (categoryId: string | number) => {
@@ -384,7 +533,7 @@ export default function DetermineWinner() {
                 }
             }
 
-            await writeContractAsync({
+            const tx = await writeContractAsync({
                 address: competitionContractAddress,
                 abi: CompetitionManagerABI as any,
                 functionName: "setWinner",
@@ -403,6 +552,21 @@ export default function DetermineWinner() {
                 title: "Winner Set Successfully",
                 description: "The winner has been set on-chain.",
             });
+
+            queryClient.invalidateQueries({ queryKey: ["participant-winners", compId] });
+            queryClient.invalidateQueries({ queryKey: ["prize-winners", compId] });
+
+            if (publicClient && tx) {
+                publicClient.waitForTransactionReceipt({ hash: tx }).then(() => {
+                    queryClient.invalidateQueries({ queryKey: ["participant-winners", compId] });
+                    queryClient.invalidateQueries({ queryKey: ["prize-winners", compId] });
+                }).catch(console.error);
+            }
+
+            setTimeout(() => {
+                queryClient.invalidateQueries({ queryKey: ["participant-winners", compId] });
+                queryClient.invalidateQueries({ queryKey: ["prize-winners", compId] });
+            }, 3000);
         } catch (error: any) {
             console.error("Failed to set winner:", error);
             const name = decodeWinnerErrorName(error);
@@ -443,7 +607,7 @@ export default function DetermineWinner() {
             {/* Winner Selection */}
             <div className="bg-white rounded-xl p-6">
 
-                <div className="flex justify-between items-start mb-6">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
                     <div>
                         <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
                             Configuration Phase
@@ -453,9 +617,29 @@ export default function DetermineWinner() {
                             Select the winning team for each competition category.
                         </p>
                     </div>
-                    <span className="text-xs font-medium text-slate-400 bg-slate-50 px-3 py-1 rounded-full">
-                        {categories.length} Available Categories
-                    </span>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <span className="text-xs font-medium text-slate-400 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-100">
+                            {categories.length} Available Categories
+                        </span>
+                        <button
+                            type="button"
+                            onClick={handleDistributePrize}
+                            disabled={isDistributingPrize}
+                            className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 transition-all shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            {isDistributingPrize ? (
+                                <>
+                                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                                    <span>Distributing...</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Coins className="w-3.5 h-3.5" />
+                                    <span>Distribute Prize</span>
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
 
                 <div className="overflow-x-auto">
@@ -468,7 +652,7 @@ export default function DetermineWinner() {
                             </tr>
                         </thead>
                         <tbody>
-                            {isLoadingPrizeWinners ? (
+                            {isLoadingPrizeWinners || isLoadingParticipantWinners ? (
                                 <tr>
                                     <td colSpan={3} className="py-8 text-center text-slate-400">
                                         <Loader2 className="w-5 h-5 animate-spin inline mr-2 text-blue-600" />
@@ -502,13 +686,28 @@ export default function DetermineWinner() {
                                                             {isLoadingTeams ? (
                                                                 <option value="" disabled>Loading teams...</option>
                                                             ) : !Array.isArray(allTeams) || allTeams.length === 0 ? (
-                                                                <option value="" disabled>No teams found</option>
+                                                                <>
+                                                                    {category.teamId ? (
+                                                                        <option value={category.teamId}>
+                                                                            {category.teamName || `Team #${category.teamId}`}
+                                                                        </option>
+                                                                    ) : (
+                                                                        <option value="" disabled>No teams found</option>
+                                                                    )}
+                                                                </>
                                                             ) : (
-                                                                allTeams.map((team) => (
-                                                                    <option key={team.id} value={team.id}>
-                                                                        {team.name}
-                                                                    </option>
-                                                                ))
+                                                                <>
+                                                                    {!allTeams.some((t) => String(t.id) === String(category.teamId)) && category.teamId ? (
+                                                                        <option value={category.teamId}>
+                                                                            {category.teamName || `Team #${category.teamId}`}
+                                                                        </option>
+                                                                    ) : null}
+                                                                    {allTeams.map((team) => (
+                                                                        <option key={team.id} value={team.id}>
+                                                                            {team.name}
+                                                                        </option>
+                                                                    ))}
+                                                                </>
                                                             )}
                                                         </select>
                                                         <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-3">
@@ -562,6 +761,68 @@ export default function DetermineWinner() {
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                {/* Prize Distribution Banner & Action */}
+                <div className={`mt-8 pt-6 border-t flex flex-col md:flex-row items-start md:items-center justify-between gap-4 p-5 rounded-xl border ${
+                    isAlreadyDistributed
+                        ? "bg-emerald-50/50 border-emerald-200"
+                        : "bg-slate-50/70 border-slate-100"
+                }`}>
+                    <div className="flex items-start gap-3.5">
+                        <div className={`p-2.5 rounded-xl mt-0.5 shrink-0 ${
+                            isAlreadyDistributed
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : allWinnersSet
+                                    ? 'bg-emerald-100 text-emerald-700'
+                                    : 'bg-slate-200/80 text-slate-600'
+                        }`}>
+                            <Coins className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-slate-800">Distribusi Hadiah Kompetisi</h3>
+                                <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                    isAlreadyDistributed
+                                        ? 'bg-emerald-100 text-emerald-800 border border-emerald-300'
+                                        : allWinnersSet
+                                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                            : 'bg-amber-50 text-amber-700 border border-amber-200'
+                                }`}>
+                                    {isAlreadyDistributed
+                                        ? 'Selesai Didistribusikan'
+                                        : allWinnersSet
+                                            ? 'Siap Didistribusikan'
+                                            : `${setWinnersCount}/${categories.length} Kategori Siap`}
+                                </span>
+                            </div>
+                            <p className="text-xs text-slate-500 mt-1 max-w-xl leading-relaxed">
+                                {isAlreadyDistributed
+                                    ? "Seluruh hadiah kompetisi telah sukses didistribusikan di blockchain kepada wallet para pemenang."
+                                    : allWinnersSet
+                                        ? "Seluruh pemenang untuk setiap kategori telah ditetapkan. Klik tombol di samping untuk mendistribusikan hadiah ke smart contract."
+                                        : `Pastikan semua kategori pemenang telah ditetapkan (${setWinnersCount}/${categories.length}) sebelum mendistribusikan prize pool.`}
+                            </p>
+                        </div>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleDistributePrize}
+                        disabled={isDistributingPrize}
+                        className="w-full md:w-auto inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-6 py-2.5 text-xs font-semibold text-white hover:bg-emerald-700 shadow-emerald-600/20 transition-all shadow-xs cursor-pointer shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        {isDistributingPrize ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Memproses Distribusi...</span>
+                            </>
+                        ) : (
+                            <>
+                                <Coins className="w-4 h-4" />
+                                <span>Distribute Prize</span>
+                            </>
+                        )}
+                    </button>
                 </div>
             </div>
 
