@@ -46,10 +46,12 @@ const lifecycle = [
 
 const partners = [
   { name: "BotChain", logo: "/botchain.png", className: "rounded-[6px]" },
+  { name: "Bittensor", logo: "/bittensor.webp" },
   { name: "MetaMask", logo: "/metamask.png" },
   { name: "Tether", logo: "/tether.png" },
   { name: "Indodax", logo: "/indodax.png" },
   { name: "Binance", logo: "/binance.png" },
+  { name: "Bittensor", logo: "/bittensor.webp" },
 ]
 
 function formatEscrowAmount(val: number | null | undefined): string {
