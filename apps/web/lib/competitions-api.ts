@@ -1060,9 +1060,15 @@ export async function requestJoinTeam(
 
   const resJson = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw new Error(
-      parseApiErrorResponse(resJson, "Failed to submit join request")
+    const message = parseApiErrorResponse(
+      resJson,
+      "Failed to submit join request",
     )
+    const err: any = new Error(message)
+    err.status = response.status
+    err.statusCode = response.status
+    err.payload = resJson
+    throw err
   }
 
   return resJson

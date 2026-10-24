@@ -14,6 +14,8 @@ import {
   Badge,
   fieldClass,
 } from "@/components/ui/page-primitives"
+import { Modal } from "@/components/ui/modal"
+import { ProfilePrompt } from "@/features/registration/components/profile-prompt"
 import { useSiteActions } from "@/components/layout/site-actions"
 import type { Competition } from "@/features/competitions/types"
 import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors"
@@ -48,6 +50,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
   const [error, setError] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState<string[]>([])
   const [refreshOffset, setRefreshOffset] = useState(0)
+  const [showProfilePrompt, setShowProfilePrompt] = useState(false)
   const [submittingTeamId, setSubmittingTeamId] = useState<string | null>(null)
   const [isSubmittingCode, setIsSubmittingCode] = useState(false)
   const [storedToken, setStoredToken] = useState<string | null>(null)
@@ -170,7 +173,26 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
         })
       }
     } catch (err: any) {
-      setError(err?.message || "Failed to join team. Please ensure you are logged in.")
+      const status =
+        err?.status ??
+        err?.statusCode ??
+        err?.payload?.statusCode ??
+        err?.cause?.status
+      const msg = String(err?.message || "")
+
+      if (
+        status === 403 ||
+        msg.includes("403") ||
+        msg.toLowerCase().includes("silahkan update profile") ||
+        msg.toLowerCase().includes("update profile")
+      ) {
+        setShowProfilePrompt(true)
+        return
+      }
+
+      setError(
+        err?.message || "Failed to join team. Please ensure you are logged in."
+      )
     } finally {
       setSubmittingTeamId(null)
     }
@@ -298,6 +320,23 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
                 inviteCode: rawCode,
               })
             } catch (err: any) {
+              const status =
+                err?.status ??
+                err?.statusCode ??
+                err?.payload?.statusCode ??
+                err?.cause?.status
+              const msg = String(err?.message || "")
+
+              if (
+                status === 403 ||
+                msg.includes("403") ||
+                msg.toLowerCase().includes("silahkan update profile") ||
+                msg.toLowerCase().includes("update profile")
+              ) {
+                setShowProfilePrompt(true)
+                return
+              }
+
               setError(
                 err?.message ||
                   `Team code "${code.trim()}" not found or invalid.`
@@ -492,6 +531,26 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           </Button>
         </nav>
       </div>
+
+      <Modal
+        open={showProfilePrompt}
+        onOpenChange={(open) => {
+          if (!open) setShowProfilePrompt(false)
+        }}
+        title="Set Up Your Profile"
+      >
+        <ProfilePrompt
+          onLater={() => setShowProfilePrompt(false)}
+          onSetup={() => {
+            setShowProfilePrompt(false)
+            router.push(
+              competition?.id
+                ? `${routes.profile}?setup=1&competition=${encodeURIComponent(competition.id)}`
+                : `${routes.profile}?setup=1`
+            )
+          }}
+        />
+      </Modal>
     </PageContainer>
   )
 }
