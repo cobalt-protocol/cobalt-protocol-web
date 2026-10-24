@@ -1,10 +1,16 @@
 "use client"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { routes } from "@/lib/routes"
 import { Brand } from "./site-header"
 import { useSiteActions } from "./site-actions"
 export function SiteFooter() {
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   const { openWallet, connected, showNotice } = useSiteActions()
+  const isConnected = mounted && connected
   const linkClass =
     "block text-left text-xs leading-6 text-muted-foreground hover:text-primary"
   return (
@@ -33,7 +39,7 @@ export function SiteFooter() {
             <Link href={routes.organization} className={linkClass}>
               Host Competition
             </Link>
-            {!connected ? (
+            {!isConnected ? (
               <button className={linkClass} onClick={openWallet}>
                 Connect Wallet
               </button>

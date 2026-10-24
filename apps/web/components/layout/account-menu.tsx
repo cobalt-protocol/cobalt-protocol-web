@@ -1,7 +1,6 @@
 "use client"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
 import { useEffect, useState } from "react"
+import { usePathname, useRouter } from "next/navigation"
 import { useQuery } from "@tanstack/react-query"
 import {
   ContactRound,
@@ -17,12 +16,24 @@ import { useSiteActions } from "./site-actions"
 
 export function AccountMenu() {
   const pathname = usePathname()
+  const router = useRouter()
   const { disconnectWallet, showNotice } = useSiteActions()
   const [storedToken, setStoredToken] = useState<string | null>(null)
+  const [activePath, setActivePath] = useState<string>(() =>
+    typeof window !== "undefined" ? window.location.pathname : pathname || ""
+  )
 
   useEffect(() => {
     setStoredToken(getStoredToken())
   }, [])
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setActivePath(window.location.pathname)
+    } else if (pathname) {
+      setActivePath(pathname)
+    }
+  }, [pathname])
 
   const { data: meUser } = useQuery({
     queryKey: ["user-me", storedToken],
@@ -30,13 +41,23 @@ export function AccountMenu() {
     enabled: Boolean(storedToken),
   })
 
-  const isOrganization =
+  const currentPath =
+    activePath || (typeof window !== "undefined" ? window.location.pathname : pathname || "")
+  const isOrganizationPath = currentPath.startsWith("/organization")
+  const isOrganizationRole =
     meUser?.role === "organization" || meUser?.role === "organizer"
-  const dashboardHref = isOrganization ? routes.organization : routes.dashboard
-  const profileHref = isOrganization ? routes.organizationProfile : routes.profile
+  const dashboardHref = isOrganizationRole ? routes.organization : routes.dashboard
+  const profileHref = isOrganizationPath ? routes.organizationProfile : routes.profile
 
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root
+      onOpenChange={(open) => {
+        if (open && typeof window !== "undefined") {
+          setActivePath(window.location.pathname)
+          setStoredToken(getStoredToken())
+        }
+      }}
+    >
       <DropdownMenu.Trigger
         aria-label="Account menu"
         className="rounded-full bg-primary p-2 text-white cursor-pointer"
@@ -48,31 +69,57 @@ export function AccountMenu() {
           <DropdownMenu.Popup className="w-80 max-w-[calc(100vw_-_2rem)] rounded-xl border border-border bg-white p-2 shadow-xl outline-none">
             {[
               {
+                kind: "profile" as const,
                 href: profileHref,
                 title: "Profile",
-                description: isOrganization
+                description: isOrganizationPath
                   ? "View & edit your organization profile"
                   : "View & edit your builder credentials",
                 icon: ContactRound,
               },
               {
+                kind: "dashboard" as const,
                 href: dashboardHref,
                 title: "Dashboard",
-                description: isOrganization
+                description: isOrganizationRole
                   ? "Manage competitions & created events"
                   : "Track active competitions & submissions",
                 icon: LayoutDashboard,
               },
-            ].map(({ href, title, description, icon: Icon }) => {
+            ].map(({ kind, href, title, description, icon: Icon }) => {
               const isActive =
-                pathname === href ||
+                currentPath === href ||
                 (href === routes.organization &&
-                  pathname.startsWith("/organization/competition"))
+                  currentPath.startsWith("/organization/competition"))
               return (
-                <DropdownMenu.LinkItem
-                  key={href}
-                  closeOnClick
-                  render={<Link href={href} />}
+                <DropdownMenu.Item
+                  key={kind}
+                  onClick={async () => {
+                    if (kind === "profile") {
+                      const livePath =
+                        typeof window !== "undefined"
+                          ? window.location.pathname
+                          : currentPath
+                      const isOrgNow = livePath.startsWith("/organization")
+                      router.push(
+                        isOrgNow ? routes.organizationProfile : routes.profile
+                      )
+                      return
+                    }
+
+                    // Untuk Dashboard: cek role user menggunakan API me
+                    let role = meUser?.role
+                    const token = getStoredToken() || storedToken
+                    if (token) {
+                      const freshMe = await fetchApiMe(token)
+                      if (freshMe?.role) {
+                        role = freshMe.role
+                      }
+                    }
+                    const isOrgRole =
+                      role === "organization" || role === "organizer"
+                    router.push(isOrgRole ? routes.organization : routes.dashboard)
+                  }}
                   className={`flex items-center gap-3 rounded-lg p-3 outline-none cursor-pointer data-highlighted:bg-blue-50 ${isActive ? "bg-blue-50 text-primary" : ""}`}
                 >
                   <span
@@ -88,7 +135,7 @@ export function AccountMenu() {
                       {description}
                     </span>
                   </span>
-                </DropdownMenu.LinkItem>
+                </DropdownMenu.Item>
               )
             })}
             <DropdownMenu.Separator className="my-2 h-px bg-border" />
