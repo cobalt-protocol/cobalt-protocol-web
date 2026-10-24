@@ -283,9 +283,32 @@ export function WorkspaceAnnouncements({
       })
     } catch (error: any) {
       const status: number | undefined =
-        error?.status ?? error?.cause?.status ?? error?.cause?.cause?.status
+        error?.status ??
+        error?.statusCode ??
+        error?.cause?.status ??
+        error?.cause?.statusCode ??
+        error?.cause?.cause?.status ??
+        error?.payload?.statusCode ??
+        (typeof error?.message === "string" &&
+        (error.message.includes("403") || /forbidden/i.test(error.message))
+          ? 403
+          : undefined)
+
+      if (status === 403) {
+        const m =
+          error?.message ||
+          "Mint ditolak (403): Anda bukan anggota tim yang terdaftar untuk kompetisi ini."
+        console.warn("[mintParticipant] 403 Forbidden - rejected:", m)
+        setParticipantMintError(m)
+        toast({
+          variant: "destructive",
+          title: "Mint Ditolak (403)",
+          description: m,
+        })
+        return
+      }
       if (status === 400) {
-        const m = "Please upload your project first."
+        const m = error?.message || "Please upload your project first."
         setParticipantMintError(m)
         toast({ variant: "destructive", title: "Failed to mint certificate", description: m })
         return
@@ -387,6 +410,45 @@ export function WorkspaceAnnouncements({
         description: `Winner Certificate ${itemTitle ? `(${itemTitle}) ` : ""}successfully minted.`,
       })
     } catch (error: any) {
+      const status: number | undefined =
+        error?.status ??
+        error?.statusCode ??
+        error?.cause?.status ??
+        error?.cause?.statusCode ??
+        error?.cause?.cause?.status ??
+        error?.payload?.statusCode ??
+        (typeof error?.message === "string" &&
+        (error.message.includes("403") || /forbidden/i.test(error.message))
+          ? 403
+          : undefined)
+
+      if (status === 403) {
+        const m =
+          error?.message ||
+          "Mint ditolak (403): Kamu bukan pemenang atau tim kamu tidak terdaftar sebagai pemenang untuk kompetisi/kategori ini."
+        console.warn("[mintWinner] 403 Forbidden - rejected:", m)
+        setWinnerMintErrors((prev) => ({ ...prev, [key]: m }))
+        toast({
+          variant: "destructive",
+          title: "Mint Ditolak (403)",
+          description: m,
+        })
+        return
+      }
+
+      if (status === 400) {
+        const m =
+          error?.message ||
+          "Permintaan mint tidak valid (400) — pastikan project sudah disubmit."
+        setWinnerMintErrors((prev) => ({ ...prev, [key]: m }))
+        toast({
+          variant: "destructive",
+          title: "Mint Gagal (400)",
+          description: m,
+        })
+        return
+      }
+
       const raw =
         error?.cause?.message ||
         error?.shortMessage ||

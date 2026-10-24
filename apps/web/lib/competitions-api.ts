@@ -274,7 +274,15 @@ export async function fetchWinnerCertificateSignature(
   }
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
-    throw new Error(payload?.message || `Failed to fetch winner certificate signature (${response.status})`)
+    const message =
+      payload?.message ||
+      (typeof payload?.errors === "string" ? payload.errors : null) ||
+      `Failed to fetch winner certificate signature (${response.status})`
+    const err: any = new Error(message)
+    err.status = response.status
+    err.statusCode = response.status
+    err.payload = payload
+    throw err
   }
   return payload
 }
