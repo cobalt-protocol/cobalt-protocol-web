@@ -2,10 +2,15 @@ import { EscrowSection } from "./escrow-section"
 import { FeaturedCompetitions } from "./featured-competitions"
 import { HeroSection } from "./hero-section"
 
-export function HomePage() {
+interface HomePageProps {
+  priceUsd?: number | null
+  totalBuilders?: number | null
+}
+
+export function HomePage({ priceUsd, totalBuilders }: HomePageProps = {}) {
   return (
     <>
-      <HeroSection />
+      <HeroSection priceUsd={priceUsd} totalBuilders={totalBuilders} />
       <FeaturedCompetitions />
       <EscrowSection />
     </>

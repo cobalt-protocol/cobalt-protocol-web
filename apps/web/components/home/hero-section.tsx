@@ -1,4 +1,5 @@
 "use client"
+import { useEffect, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import {
@@ -15,6 +16,7 @@ import {
   Zap,
 } from "lucide-react"
 import { routes } from "@/lib/routes"
+import { fetchDashboard } from "@/lib/dashboard-api"
 import styles from "./home.module.css"
 
 const lifecycle = [
@@ -50,7 +52,97 @@ const partners = [
   { name: "Binance", logo: "/binance.png" },
 ]
 
-export function HeroSection() {
+function formatEscrowAmount(val: number | null | undefined): string {
+  if (val === null || val === undefined) return "$3.4M+"
+  if (val >= 1_000_000_000) {
+    return `$${(val / 1_000_000_000).toFixed(2).replace(/\.00$/, "")}B+`
+  }
+  if (val >= 1_000_000) {
+    return `$${(val / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`
+  }
+  if (val >= 1_000) {
+    return `$${(val / 1_000).toFixed(1).replace(/\.0$/, "")}K+`
+  }
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    minimumFractionDigits: val % 1 === 0 ? 0 : 2,
+    maximumFractionDigits: 2,
+  }).format(val)
+}
+
+function formatBuilders(val: number | null | undefined): string {
+  if (val === null || val === undefined) return "42,000+"
+  if (val >= 1_000_000) {
+    return `${(val / 1_000_000).toFixed(1).replace(/\.0$/, "")}M+`
+  }
+  if (val >= 1_000) {
+    return `${(val / 1_000).toFixed(1).replace(/\.0$/, "")}K+`
+  }
+  return val.toLocaleString("en-US")
+}
+
+interface HeroSectionProps {
+  priceUsd?: number | null
+  totalBuilders?: number | null
+}
+
+export function HeroSection({
+  priceUsd: initialPriceUsd,
+  totalBuilders: initialTotalBuilders,
+}: HeroSectionProps = {}) {
+  const [priceUsd, setPriceUsd] = useState<number | null | undefined>(initialPriceUsd)
+  const [totalBuilders, setTotalBuilders] = useState<number | null | undefined>(
+    initialTotalBuilders,
+  )
+
+  useEffect(() => {
+    if (initialPriceUsd !== undefined && initialPriceUsd !== null) {
+      setPriceUsd(initialPriceUsd)
+    }
+    if (initialTotalBuilders !== undefined && initialTotalBuilders !== null) {
+      setTotalBuilders(initialTotalBuilders)
+    }
+
+    if (
+      initialPriceUsd !== undefined &&
+      initialPriceUsd !== null &&
+      initialTotalBuilders !== undefined &&
+      initialTotalBuilders !== null
+    ) {
+      return
+    }
+
+    let isMounted = true
+    fetchDashboard()
+      .then((data) => {
+        if (isMounted && data) {
+          if (
+            typeof data.deposited?.price_usd === "number" &&
+            (initialPriceUsd === undefined || initialPriceUsd === null)
+          ) {
+            setPriceUsd(data.deposited.price_usd)
+          }
+          if (
+            typeof data.total_builders === "number" &&
+            (initialTotalBuilders === undefined || initialTotalBuilders === null)
+          ) {
+            setTotalBuilders(data.total_builders)
+          }
+        }
+      })
+      .catch(() => {
+        // Fallback gracefully to default
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [initialPriceUsd, initialTotalBuilders])
+
+  const escrowValue = formatEscrowAmount(priceUsd)
+  const buildersValue = formatBuilders(totalBuilders)
+
   return (
     <section className={styles["hero"]}>
       <div className={styles["site-container"]}>
@@ -89,12 +181,12 @@ export function HeroSection() {
         <div className={styles["stats-grid"]}>
           {[
             {
-              value: "$3.4M+",
+              value: escrowValue,
               label: "Secured in Smart Escrow",
               icon: LockKeyhole,
             },
             {
-              value: "42,000+",
+              value: buildersValue,
               label: "Active Global Builders",
               icon: Users,
             },
@@ -104,7 +196,7 @@ export function HeroSection() {
               icon: ShieldCheck,
             },
             {
-              value: "< 24h",
+              value: "Realtime",
               label: "Average Winner Settlement",
               icon: Gauge,
             },
