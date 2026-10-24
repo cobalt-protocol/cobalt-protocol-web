@@ -16,6 +16,8 @@ import {
 } from '@/lib/competitions-api';
 import { useDynamicTokenInfo } from '@/lib/hooks/use-dynamic-token';
 import { useCompetitionTokenPrize } from '@/lib/hooks/use-competition-token-prize';
+import { convertTokenOnChain } from '@/lib/token-convert';
+import { zeroAddress } from 'viem';
 import type { Competition } from '../types';
 import { getPrizeTotal } from '../lib/competition-selectors';
 import { PageContainer } from "@/components/ui/page-primitives";
@@ -84,8 +86,6 @@ export function CompetitionDetail({
 
   const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useCompetitionTokenPrize(onchainCompId);
 
-  const { decimals, symbol: dynamicSymbol } = useDynamicTokenInfo(tokenPrizeData?.token_address);
-
   const effectiveCompetition: Competition | undefined = useMemo(() => {
     if (apiCompetition) {
       return mapApiCompetitionToCompetition(apiCompetition);
@@ -96,6 +96,37 @@ export function CompetitionDetail({
 
     return initialCompetition || fetchedUserCompetition;
   }, [apiCompetition, initialCompetition, fetchedUserCompetition]);
+
+  const deposit = apiCompetition?.prize_deposits?.[0] ?? effectiveCompetition?.prizeDeposits?.[0] ?? null;
+
+  const depositAmountRaw =
+    deposit?.amount !== undefined && deposit?.amount !== null && String(deposit.amount).trim() !== ""
+      ? String(deposit.amount).trim()
+      : tokenPrizeData?.total_prize !== undefined && tokenPrizeData?.total_prize !== null && String(tokenPrizeData.total_prize).trim() !== ""
+        ? String(tokenPrizeData.total_prize).trim()
+        : null;
+
+  const depositTokenAddress =
+    (deposit?.token_address && String(deposit.token_address).trim() ? String(deposit.token_address).trim() : null) ||
+    (tokenPrizeData?.token_address && String(tokenPrizeData.token_address).trim() ? String(tokenPrizeData.token_address).trim() : null) ||
+    (apiCompetition?.fee_token_address && String(apiCompetition.fee_token_address).trim() ? String(apiCompetition.fee_token_address).trim() : null) ||
+    (effectiveCompetition?.fee_token_address && String(effectiveCompetition.fee_token_address).trim() ? String(effectiveCompetition.fee_token_address).trim() : null) ||
+    null;
+
+  const hasDepositRaw = Boolean(depositAmountRaw && depositAmountRaw !== "0");
+
+  const { decimals, symbol: dynamicSymbol, isLoading: isLoadingDynamic } = useDynamicTokenInfo(depositTokenAddress);
+
+  const { data: convertedPrize, isLoading: isLoadingConverted } = useQuery({
+    queryKey: ["convert-org-detail-prize", depositTokenAddress ?? zeroAddress, depositAmountRaw],
+    queryFn: async () => {
+      if (!depositAmountRaw) return null;
+      const addr = depositTokenAddress || zeroAddress;
+      return await convertTokenOnChain(addr, depositAmountRaw);
+    },
+    enabled: Boolean(depositAmountRaw),
+    staleTime: 60_000,
+  });
 
   const isOwner = Boolean(
     apiCompetition?.user_id &&
@@ -120,21 +151,41 @@ export function CompetitionDetail({
     : null;
 
   const prizePoolDisplay = useMemo(() => {
-    if (isLoadingTokenPrize) return "Loading...";
-    if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
+    const isLoadingAny = (hasDepositRaw && (isLoadingConverted || isLoadingDynamic)) || (!hasDepositRaw && isLoadingTokenPrize);
+    if (isLoadingAny) return "Loading...";
+
+    if (convertedPrize) {
+      return `${convertedPrize.convertedAmount} ${convertedPrize.symbol}`;
+    }
+
+    if (depositAmountRaw) {
       return formatTokenPrize(
-        tokenPrizeData.total_prize,
-        tokenPrizeData.token_address,
+        depositAmountRaw,
+        depositTokenAddress,
         connectedNativeSymbol,
         decimals,
         dynamicSymbol || (tokenPrizeData as any)?.token_symbol || (tokenPrizeData as any)?.symbol || undefined
       );
     }
+
     if (effectiveCompetition) {
       return formatMoney(getPrizeTotal(effectiveCompetition));
     }
     return `75,000 ${getTokenSymbol(null, connectedNativeSymbol)}`;
-  }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, effectiveCompetition, decimals, dynamicSymbol]);
+  }, [
+    hasDepositRaw,
+    isLoadingConverted,
+    isLoadingDynamic,
+    isLoadingTokenPrize,
+    convertedPrize,
+    depositAmountRaw,
+    depositTokenAddress,
+    connectedNativeSymbol,
+    decimals,
+    dynamicSymbol,
+    tokenPrizeData,
+    effectiveCompetition,
+  ]);
 
   const showOrgView = viewMode === "organization" || (viewMode === "auto" && isOrganizationRole);
 

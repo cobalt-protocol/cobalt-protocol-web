@@ -10,7 +10,7 @@ import { useBrowserDraft } from "@/lib/browser-draft"
 import { routes } from "@/lib/routes"
 import { generateNonce, verifySignature, getMe, type User, type UserRole } from "@/lib/auth-api"
 import { mapApiProfileToBuilderProfile } from "@/lib/profile-api"
-import { createCompetitionTeam, getStoredToken } from "@/lib/competitions-api"
+import { createCompetitionTeam, createSignatureTeamPayment, getStoredToken } from "@/lib/competitions-api"
 import { getCompetitionContractAddress } from "@/lib/contracts"
 import { botChainTestnet, addBotChainTestnetToWallet, connectMetaMaskDirectly, disconnectMetaMaskDirectly, signMessageWithViem } from "@/lib/wagmi"
 import { toast } from "@/hooks/use-toast"
@@ -41,8 +41,9 @@ const isOptionalProfile = (value: unknown): value is BuilderProfile | null =>
 
 interface ExecutePaidTeamParams {
   competition: RegistrationCompetition
-  input: CreateTeamInput
-  skillsList: string[]
+  cid: string
+  signature: `0x${string}`
+  onchainCompetitionIdOverride?: string | null
   effectiveAddress?: string
   publicClient: any
   writeContractAsync: any
@@ -51,6 +52,7 @@ function parseContractError(err: any): string {
   const msg = String(err?.shortMessage || err?.message || err?.cause?.message || err?.cause || err || "")
   const data = String(err?.data || err?.cause?.data || "")
   if (msg.includes("CompetitionDoesNotExist")) return "Competition does not exist on-chain."
+  if (msg.includes("InvalidSignature")) return "Invalid signature for team payment."
   if (msg.includes("IncorrectFeeAmount")) return "Incorrect team registration fee amount."
   if (msg.includes("InvalidRecipient")) return "Invalid recipient address for competition fee."
   if (msg.includes("AmountZero")) return "Registration fee amount cannot be zero."
@@ -77,16 +79,20 @@ function parseContractError(err: any): string {
 
 async function executePaidTeamCreation({
   competition,
-  input,
-  skillsList,
+  cid,
+  signature,
+  onchainCompetitionIdOverride,
   effectiveAddress,
   publicClient,
   writeContractAsync,
 }: ExecutePaidTeamParams): Promise<{ error?: string; isFreeOnchain?: boolean; txHash?: string }> {
   if (!effectiveAddress) return { error: "Wallet not connected" }
-  if (!competition.onchainCompetitionId) return { error: "Invalid onchain competition ID" }
+  const resolvedOnchainId = onchainCompetitionIdOverride || competition.onchainCompetitionId
+  if (!resolvedOnchainId) return { error: "Invalid onchain competition ID" }
+  if (!cid) return { error: "Missing IPFS CID for team metadata" }
+  if (!signature) return { error: "Missing signature for team payment" }
 
-  const onchainId = BigInt(competition.onchainCompetitionId)
+  const onchainId = BigInt(resolvedOnchainId)
   const competitionContractAddress = getCompetitionContractAddress()
 
   if (!publicClient) return { error: "Public client not available" }
@@ -100,7 +106,7 @@ async function executePaidTeamCreation({
     const contractComp: any = await publicClient.readContract({
       address: competitionContractAddress,
       abi: CompetitionManagerABI as any,
-      functionName: "competitions",
+      functionName: "getCompetition",
       args: [onchainId],
     })
     const payment = contractComp?.payment ?? contractComp?.[6]
@@ -217,30 +223,7 @@ async function executePaidTeamCreation({
     }
   }
 
-  // Pin team metadata to IPFS
-  const metadata = {
-    name: input.name.trim(),
-    visibility: input.visibility === "public",
-    description: input.requirements.trim(),
-    skills_team: skillsList,
-  }
-  const formData = new FormData()
-  const jsonBlob = new Blob([JSON.stringify(metadata)], { type: "application/json" })
-  formData.append("file", jsonBlob, "team-metadata.json")
-
-  let cid = ""
-  try {
-    const ipfsRes = await fetch("/api/ipfs", { method: "POST", body: formData })
-    if (!ipfsRes.ok) throw new Error("Failed to pin team metadata to IPFS")
-    const ipfsData = await ipfsRes.json()
-    cid = ipfsData.cid || ipfsData.hash || ""
-  } catch (err) {
-    console.error("IPFS pinning error:", err)
-    return { error: "Failed to pin metadata to IPFS" }
-  }
-  if (!cid) return { error: "Failed to get CID from IPFS" }
-
-  // Execute paymentCreateTeam on CompetitionManager with exactly (_competitionId, cid)
+  // Execute paymentCreateTeam on CompetitionManager with (_competitionId, cid, _signature)
   try {
     const txHash = await writeContractAsync({
       address: competitionContractAddress,
@@ -249,6 +232,7 @@ async function executePaidTeamCreation({
       args: [
         onchainId,
         cid,
+        signature,
       ],
       value: isNative ? feeAmount : 0n,
     })
@@ -762,30 +746,62 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     competition: RegistrationCompetition,
     profileOverride?: BuilderProfile
   ) {
-    // Refetch the latest profile ("me" API) on register click so the
-    // registration step is decided against fresh server-side profile data.
-    let currentProfile = profileOverride ?? profile
-    if (!profileOverride) {
-      const freshProfile = await refetchUser()
-      if (freshProfile) currentProfile = freshProfile
+    const currentProfile = profileOverride ?? profile
+    if (!connected) {
+      handleOpenWallet()
+      return
     }
 
-    continueRegistration(competition, connected, currentProfile)
+    const effectiveToken = sessionToken || getStoredToken()
+    if (!effectiveToken) {
+      handleOpenWallet()
+      return
+    }
+
+    const compIdOrSlug =
+      competition.id || competition.onchainCompetitionId || competition.slug
+    if (compIdOrSlug) {
+      try {
+        await createSignatureTeamPayment(
+          chainId,
+          compIdOrSlug,
+          null,
+          effectiveToken
+        )
+      } catch (err: any) {
+        const errStatus = err?.status ?? err?.payload?.statusCode
+        const errMsg = String(err?.message || "")
+        if (
+          errStatus === 403 ||
+          errMsg.toLowerCase().includes("silahkan update profile") ||
+          errMsg.includes("403")
+        ) {
+          setDialog({
+            kind: "profile",
+            competition,
+            profileOverride: currentProfile,
+          })
+          return
+        }
+        if (errStatus === 401) {
+          handleOpenWallet()
+          return
+        }
+      }
+    }
+
+    setDialog({ kind: "choice", competition, profileOverride: currentProfile })
   }
   function continueRegistration(
     competition: RegistrationCompetition,
     walletConnected: boolean,
     currentProfile: BuilderProfile | null
   ) {
-    const step = getRegistrationStep(
-      walletConnected,
-      currentProfile
-    )
-    if (step === "wallet") {
+    if (!walletConnected) {
       handleOpenWallet()
       return
     }
-    setDialog({ kind: step, competition, profileOverride: currentProfile })
+    setDialog({ kind: "choice", competition, profileOverride: currentProfile })
   }
   function joinTeam(
     membership: PreviewMembership,
@@ -812,21 +828,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     if (error) return error
     if (dialog?.kind !== "create") return "Reopen the team form to continue."
 
-    // Refetch fresh user profile from GET /auth/me so we validate against server state
-    let freshProfile: BuilderProfile | null = null
-    try {
-      freshProfile = await refetchUser()
-    } catch (err) {
-      console.warn("[createTeam] refetchUser failed, falling back to cached profile", err)
-    }
-    const activeProfile = freshProfile ?? dialog.profileOverride ?? profile
-    if (!isProfileComplete(activeProfile)) {
-      setDialog({ kind: "profile", competition: dialog.competition, profileOverride: activeProfile })
-      return "Please complete your profile before creating a team. Fill username, email, location, institution, pitch and at least one skill."
-    }
+    const activeProfile = dialog.profileOverride ?? profile
 
-    // Chain-scoped: POST /api/v1/chains/:chainId/competitions/:competitionId/join-teams
-    // Requires Authorization: Bearer <JWT> (AuthSessionGuard -> req.userId) and chain_id match via indexer_state.chain_id.
+    // Requires Authorization: Bearer <JWT> (AuthSessionGuard -> req.userId)
     const effectiveToken = sessionToken || getStoredToken()
     if (!effectiveToken) {
       toast({
@@ -837,8 +841,8 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       return "You must be authenticated to create a team. Please connect your wallet."
     }
 
-    // Competition identifier: backend accepts OR[{id},{competition_id}] (ULID) and checks deleted_at + indexer_state.chain_id
-    const compIdOrSlug = dialog.competition.id || dialog.competition.slug
+    // Competition identifier: backend accepts OR[{id},{competition_id}] (ULID or onchain ID) and checks deleted_at + indexer_state.chain_id
+    const compIdOrSlug = dialog.competition.id || dialog.competition.onchainCompetitionId || dialog.competition.slug
     if (!compIdOrSlug) return "Invalid competition identifier."
 
     const parsedSkills = input.requirements
@@ -851,6 +855,67 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       new Set([...(input.skills || []), ...parsedSkills])
     )
 
+    // Pin team metadata to IPFS first so we have `cid` for createByChainAndCompetition & paymentCreateTeam
+    const metadata = {
+      name: input.name.trim(),
+      visibility: input.visibility === "public",
+      description: input.requirements.trim(),
+      skills_team: skillsList,
+    }
+    const formData = new FormData()
+    const jsonBlob = new Blob([JSON.stringify(metadata)], { type: "application/json" })
+    formData.append("file", jsonBlob, "team-metadata.json")
+
+    let cid = ""
+    try {
+      const ipfsRes = await fetch("/api/ipfs", { method: "POST", body: formData })
+      if (!ipfsRes.ok) throw new Error("Failed to pin team metadata to IPFS")
+      const ipfsData = await ipfsRes.json()
+      cid = ipfsData.cid || ipfsData.hash || ""
+    } catch (err) {
+      console.error("IPFS pinning error:", err)
+      return "Failed to pin metadata to IPFS"
+    }
+    if (!cid) return "Failed to get CID from IPFS"
+
+    // Call SignatureTeamPaymentController.createByChainAndCompetition
+    // POST /api/v1/chains/:chain_id/competitions/:competition_id/signature-team-payment
+    // If 403 Forbidden ("silahkan update profile"), open "Set Up Your Profile" dialog.
+    let teamPaymentSignature: `0x${string}` | null = null
+    let onchainCompIdFromSig: string | null = null
+    try {
+      const sigRes = await createSignatureTeamPayment(
+        chainId,
+        compIdOrSlug,
+        cid,
+        effectiveToken
+      )
+      teamPaymentSignature = (sigRes?.data?.signature as `0x${string}`) || null
+      if (sigRes?.data?.competition_onchain_id) {
+        onchainCompIdFromSig = String(sigRes.data.competition_onchain_id)
+      }
+    } catch (sigErr: any) {
+      const errStatus = sigErr?.status ?? sigErr?.payload?.statusCode
+      const errMsg = String(sigErr?.message || "")
+      if (
+        errStatus === 403 ||
+        errMsg.toLowerCase().includes("silahkan update profile") ||
+        errMsg.includes("403")
+      ) {
+        setDialog({
+          kind: "profile",
+          competition: dialog.competition,
+          profileOverride: activeProfile,
+        })
+        return null
+      }
+      return errMsg || "Failed to generate team payment signature."
+    }
+
+    if (!teamPaymentSignature) {
+      return "Failed to obtain signature for team payment."
+    }
+
     let teamId = crypto.randomUUID()
     let inviteCode: string | null =
       input.visibility === "private"
@@ -861,15 +926,16 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     const parsedFeeNum = Number(feeStr)
     let isFeeEnabled = !isNaN(parsedFeeNum) ? parsedFeeNum > 0 : feeStr !== "0"
 
-    if (dialog.competition.onchainCompetitionId && publicClient) {
+    const effectiveOnchainCompId = onchainCompIdFromSig || dialog.competition.onchainCompetitionId
+    if (effectiveOnchainCompId && publicClient) {
       try {
         const competitionContractAddress = getCompetitionContractAddress()
 
         const contractComp: any = await publicClient.readContract({
           address: competitionContractAddress,
           abi: CompetitionManagerABI as any,
-          functionName: "competitions",
-          args: [BigInt(dialog.competition.onchainCompetitionId)],
+          functionName: "getCompetition",
+          args: [BigInt(effectiveOnchainCompId)],
         })
         const payment = contractComp?.payment ?? contractComp?.[6]
         if (payment) {
@@ -886,8 +952,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     if (isFeeEnabled) {
       const { error: paidError, isFreeOnchain } = await executePaidTeamCreation({
         competition: dialog.competition,
-        input,
-        skillsList,
+        cid,
+        signature: teamPaymentSignature,
+        onchainCompetitionIdOverride: effectiveOnchainCompId,
         effectiveAddress,
         publicClient,
         writeContractAsync,

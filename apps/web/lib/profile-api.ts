@@ -32,6 +32,9 @@ export interface ApiProfileResponse {
 }
 
 export interface UpdateProfilePayload {
+  name?: string
+  organization_name?: string
+  avatar_url?: string
   username?: string
   email?: string
   location?: string
@@ -58,6 +61,48 @@ export const DEFAULT_CHAIN_ID = 968
 export function resolveChainId(chainId?: number | null): number {
   if (typeof chainId === "number" && Number.isInteger(chainId) && chainId > 0) return chainId
   return DEFAULT_CHAIN_ID
+}
+
+export interface UpdateOrganizationProfilePayload {
+  name: string
+  description: string
+  avatar_url?: string
+}
+
+export async function updateOrganizationProfile(
+  token: string,
+  payload: UpdateOrganizationProfilePayload,
+  chainId?: number
+): Promise<any> {
+  const resolvedChainId = resolveChainId(chainId)
+
+  const response = await fetch(
+    `${API_BASE_URL}/chains/${resolvedChainId}/profiles/organization`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  )
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    let errorMessage = `Failed to update organization profile (${response.status})`
+    try {
+      const parsed = JSON.parse(errorText)
+      if (parsed.message) {
+        errorMessage += `: ${Array.isArray(parsed.message) ? parsed.message.join(", ") : parsed.message}`
+      }
+    } catch {
+      errorMessage += `: ${errorText.slice(0, 150)}`
+    }
+    throw new Error(errorMessage)
+  }
+
+  return response.json()
 }
 
 export async function updateMyProfile(

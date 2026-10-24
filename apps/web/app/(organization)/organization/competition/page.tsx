@@ -21,9 +21,13 @@ import {
     SelectValue,
 } from "@workspace/ui/components/select";
 import { Plus, Search, Calendar, ArrowRight, Loader2 } from "lucide-react";
-import { fetchApiOrganizationCompetitions, fetchApiMe, fetchTokenPrizeByCompetitionId, formatTokenPrize, getTokenSymbol, getStoredToken, parse18DecimalAmount, type ApiCompetition } from "@/lib/competitions-api";
+import { zeroAddress } from "viem";
+import { createSignatureCreateCompetition, fetchApiOrganizationCompetitions, fetchApiMe, formatTokenPrize, getTokenSymbol, getStoredToken, parse18DecimalAmount, type ApiCompetition } from "@/lib/competitions-api";
+import { Modal } from "@/components/ui/modal";
+import { ProfilePrompt } from "@/features/registration/components/profile-prompt";
 import { useDynamicTokenInfo } from "@/lib/hooks/use-dynamic-token";
 import { useCompetitionTokenPrize } from "@/lib/hooks/use-competition-token-prize";
+import { convertTokenOnChain } from "@/lib/token-convert";
 import { useAccount, useChainId } from "wagmi";
 
 // --- Tipe ---
@@ -133,7 +137,6 @@ function formatPrize(comp: ApiCompetition, connectedNativeSymbol?: string, decim
 
 function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }) {
     const style = statusStyles[comp.status] || statusStyles.Submission;
-    const chainId = useChainId()
     const { chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
 
@@ -144,31 +147,75 @@ function OrganizationCompetitionCard({ comp }: { comp: OrganizationCompetition }
     const onchainCompId = comp.rawCompetition?.competition_id || (/^\d+$/.test(comp.id) ? comp.id : null);
     const { data: tokenPrizeData, isLoading: isLoadingTokenPrize } = useCompetitionTokenPrize(onchainCompId);
 
-    const { decimals, symbol: dynamicSymbol } = useDynamicTokenInfo(tokenPrizeData?.token_address);
+    const deposit = comp.rawCompetition?.prize_deposits?.[0] ?? null;
+    const depositAmountRaw =
+        deposit?.amount !== undefined && deposit?.amount !== null && String(deposit.amount).trim() !== ""
+            ? String(deposit.amount).trim()
+            : tokenPrizeData?.total_prize !== undefined && tokenPrizeData?.total_prize !== null && String(tokenPrizeData.total_prize).trim() !== ""
+                ? String(tokenPrizeData.total_prize).trim()
+                : null;
+
+    const depositTokenAddress =
+        (deposit?.token_address && String(deposit.token_address).trim() ? String(deposit.token_address).trim() : null) ||
+        (tokenPrizeData?.token_address && String(tokenPrizeData.token_address).trim() ? String(tokenPrizeData.token_address).trim() : null) ||
+        (comp.rawCompetition?.fee_token_address && String(comp.rawCompetition.fee_token_address).trim() ? String(comp.rawCompetition.fee_token_address).trim() : null) ||
+        null;
+
+    const hasDepositRaw = Boolean(depositAmountRaw && depositAmountRaw !== "0");
+
+    const { decimals, symbol: dynamicSymbol, isLoading: isLoadingDynamic } = useDynamicTokenInfo(depositTokenAddress);
+
+    const { data: convertedPrize, isLoading: isLoadingConverted } = useQuery({
+        queryKey: ["convert-org-prize", depositTokenAddress ?? zeroAddress, depositAmountRaw],
+        queryFn: async () => {
+            if (!depositAmountRaw) return null;
+            const addr = depositTokenAddress || zeroAddress;
+            return await convertTokenOnChain(addr, depositAmountRaw);
+        },
+        enabled: Boolean(depositAmountRaw),
+        staleTime: 60_000,
+    });
 
     const prizeDisplay = useMemo(() => {
-        if (isLoadingTokenPrize) return "Loading...";
-        if (tokenPrizeData && tokenPrizeData.total_prize !== undefined && tokenPrizeData.total_prize !== null) {
+        const isLoadingAny = (hasDepositRaw && (isLoadingConverted || isLoadingDynamic)) || (!hasDepositRaw && isLoadingTokenPrize);
+        if (isLoadingAny) return "Loading...";
+
+        if (convertedPrize) {
+            return `${convertedPrize.convertedAmount} ${convertedPrize.symbol}`;
+        }
+
+        if (depositAmountRaw) {
             return formatTokenPrize(
-                tokenPrizeData.total_prize,
-                tokenPrizeData.token_address,
+                depositAmountRaw,
+                depositTokenAddress,
                 connectedNativeSymbol,
                 decimals,
                 dynamicSymbol || (tokenPrizeData as any)?.token_symbol || (tokenPrizeData as any)?.symbol || undefined
             );
         }
-        const symbol = dynamicSymbol || getTokenSymbol(tokenPrizeData?.token_address, connectedNativeSymbol);
+
+        const symbol = dynamicSymbol || getTokenSymbol(depositTokenAddress, connectedNativeSymbol);
         if (comp.rawCompetition) {
             const calculatedPrize = formatPrize(comp.rawCompetition, connectedNativeSymbol, decimals);
             if (calculatedPrize !== "0") {
                 return `${calculatedPrize} ${symbol}`;
             }
         }
-        if (comp.prize.includes(" ") || comp.prize === "0") {
-            return `${comp.prize} ${symbol}`;
-        }
         return `${comp.prize} ${symbol}`;
-    }, [tokenPrizeData, isLoadingTokenPrize, connectedNativeSymbol, comp, decimals, dynamicSymbol]);
+    }, [
+        hasDepositRaw,
+        isLoadingConverted,
+        isLoadingDynamic,
+        isLoadingTokenPrize,
+        convertedPrize,
+        depositAmountRaw,
+        depositTokenAddress,
+        connectedNativeSymbol,
+        decimals,
+        dynamicSymbol,
+        tokenPrizeData,
+        comp,
+    ]);
 
     return (
         <Card
@@ -242,10 +289,36 @@ export default function CompetitionListPage() {
     const [category, setCategory] = useState<CategoryFilter>("all");
     const [storedToken, setStoredToken] = useState<string | null>(null);
     const [hasCheckedToken, setHasCheckedToken] = useState(false);
+    const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+    const [isCheckingCreatePermission, setIsCheckingCreatePermission] = useState(false);
 
     const chainId = useChainId()
     const { isConnected, status: accountStatus, chain } = useAccount();
     const connectedNativeSymbol = chain?.nativeCurrency?.symbol;
+
+    async function handleCreateCompetitionClick() {
+        const token = storedToken || getStoredToken();
+        setIsCheckingCreatePermission(true);
+        try {
+            await createSignatureCreateCompetition(chainId, null, token);
+            router.push(routes.createCompetition);
+        } catch (err: any) {
+            const errStatus = err?.status ?? err?.payload?.statusCode;
+            const errMsg = String(err?.message || "");
+            if (
+                errStatus === 403 ||
+                errMsg.toLowerCase().includes("silahkan update organization profile") ||
+                errMsg.toLowerCase().includes("silahkan update profile") ||
+                errMsg.includes("403")
+            ) {
+                setIsProfileModalOpen(true);
+                return;
+            }
+            router.push(routes.createCompetition);
+        } finally {
+            setIsCheckingCreatePermission(false);
+        }
+    }
 
     useEffect(() => {
         setStoredToken(getStoredToken());
@@ -328,17 +401,35 @@ export default function CompetitionListPage() {
                         <p className="text-[#434655]">
                             View, search, and manage competitions you have created.
                         </p>
-                        <Link href="/organization/competition/create">
-                            <Button
-                                variant="outline"
-                                className="text-white bg-[#2563EB]! font-normal px-8 py-5 flex flex-row items-center"
-                            >
+                        <Button
+                            variant="outline"
+                            onClick={handleCreateCompetitionClick}
+                            disabled={isCheckingCreatePermission}
+                            className="text-white bg-[#2563EB]! font-normal px-8 py-5 flex flex-row items-center cursor-pointer"
+                        >
+                            {isCheckingCreatePermission ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-1" />
+                            ) : (
                                 <Plus />
-                                <p>Create Competition</p>
-                            </Button>
-                        </Link>
+                            )}
+                            <p>Create Competition</p>
+                        </Button>
                     </div>
                 </div>
+
+                <Modal
+                    open={isProfileModalOpen}
+                    onOpenChange={setIsProfileModalOpen}
+                    title="Set Up Your Profile"
+                >
+                    <ProfilePrompt
+                        onLater={() => setIsProfileModalOpen(false)}
+                        onSetup={() => {
+                            setIsProfileModalOpen(false);
+                            router.push(routes.organizationProfile);
+                        }}
+                    />
+                </Modal>
 
                 {/* Filters */}
                 <div className="mt-8 flex flex-col md:flex-row gap-4 justify-between items-center bg-white p-2 rounded-xl shadow-none border-0">

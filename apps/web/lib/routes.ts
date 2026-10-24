@@ -4,6 +4,7 @@ export const routes = {
   profile: "/profile",
   dashboard: "/dashboard",
   organization: "/organization/competition",
+  organizationProfile: "/organization/profile",
   createCompetition: "/organization/competition/create",
   competition: (id: string) => `/competition/${encodeURIComponent(id)}`,
   organizationCompetition: (id: string) => `/organization/competition/${encodeURIComponent(id)}`,

@@ -308,6 +308,165 @@ export async function fetchSetWinnerSignature(
   return payload
 }
 
+export interface SignatureTeamPaymentData {
+  id?: string
+  signature?: `0x${string}` | null
+  competition_id?: string
+  competition_onchain_id?: string | null
+  indexer_state_id?: string | null
+  hash?: string
+  contract_address?: `0x${string}`
+  chain_id?: number
+  cid?: string | null
+}
+
+/**
+ * POST /api/v1/chains/:chain_id/competitions/:competition_id/signature-team-payment
+ * Maps to SignatureTeamPaymentController.createByChainAndCompetition
+ * Returns 403 ("silahkan update profile") if the user profile is incomplete.
+ */
+export async function createSignatureTeamPayment(
+  chainIdOrCompetitionId: number | string,
+  competitionIdOrCid: string,
+  cidOrToken?: string | null,
+  tokenMaybe?: string | null,
+): Promise<{ data?: SignatureTeamPaymentData | null; message?: string }> {
+  let chainId: number
+  let competitionId: string
+  let cid: string | undefined
+  let token: string | null | undefined
+
+  if (typeof chainIdOrCompetitionId === "number") {
+    chainId = resolveChainId(chainIdOrCompetitionId)
+    competitionId = competitionIdOrCid
+    cid = cidOrToken || undefined
+    token = tokenMaybe
+  } else {
+    chainId = DEFAULT_CHAIN_ID
+    competitionId = chainIdOrCompetitionId
+    cid = competitionIdOrCid || undefined
+    token = cidOrToken
+  }
+
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    const err: any = new Error("You must be authenticated to register a team.")
+    err.status = 401
+    throw err
+  }
+
+  const path = `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(competitionId)}/signature-team-payment`
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(cid ? { cid } : {}),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message =
+      payload?.message ||
+      (typeof payload?.errors === "string" ? payload.errors : null) ||
+      `Failed to generate team payment signature (${response.status})`
+    const err: any = new Error(message)
+    err.status = response.status
+    err.payload = payload
+    throw err
+  }
+
+  return payload
+}
+
+export const fetchTeamPaymentSignature = createSignatureTeamPayment
+
+export interface CreateSignatureCreateCompetitionPayload {
+  competition?: {
+    id?: string | number
+    cid: string
+    formation: string
+    organization?: string
+    prizeCertificateClaim: string | number
+    certificateCID?: string
+    payment?: {
+      tokenAddress?: string
+      fee?: string | number
+    }
+  }
+  payment?: {
+    tokenAddress?: string
+    fee?: string | number
+  }
+  winners?: Array<{
+    id?: string | number
+    competitionId?: string | number
+    prizeToken: string
+    prizeAmount: string | number
+    certificateCID?: string
+  }>
+  priceCompetitionFeeId?: string | number
+  competition_id?: string
+}
+
+export interface SignatureCreateCompetitionData {
+  id?: string
+  signature?: `0x${string}` | null
+  hash?: string
+  contract_address?: `0x${string}`
+  chain_id?: number | null
+  indexer_state_id?: string | null
+  competition?: any
+  payment?: any
+  winners?: any[]
+  priceCompetitionFeeId?: string
+}
+
+/**
+ * POST /api/v1/chains/:chain_id/competitions/signature-create-competition
+ * Maps to SignatureCreateCompetitionController.createByChain
+ * Returns 403 ("silahkan update organization profile") if the organization profile is incomplete.
+ */
+export async function createSignatureCreateCompetition(
+  chainId?: number,
+  body?: CreateSignatureCreateCompetitionPayload | null,
+  token?: string | null,
+): Promise<{ data?: SignatureCreateCompetitionData | null; message?: string }> {
+  const resolvedChain = resolveChainId(chainId)
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    const err: any = new Error("You must be authenticated to create a competition.")
+    err.status = 401
+    throw err
+  }
+
+  const path = `${API_BASE_URL}/chains/${resolvedChain}/competitions/signature-create-competition`
+  const response = await fetch(path, {
+    method: "POST",
+    headers: {
+      Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(body ?? {}),
+  })
+
+  const payload = await response.json().catch(() => null)
+  if (!response.ok) {
+    const message =
+      payload?.message ||
+      (typeof payload?.errors === "string" ? payload.errors : null) ||
+      `Failed to generate create competition signature (${response.status})`
+    const err: any = new Error(message)
+    err.status = response.status
+    err.payload = payload
+    throw err
+  }
+
+  return payload
+}
+
+
 export function parse18DecimalAmount(
   val?: string | number | null,
   decimals: number = 18
@@ -585,6 +744,23 @@ export function mapApiCompetitionToCompetition(
 export function getStoredToken(): string | null {
   if (typeof window === "undefined") return null
   return window.localStorage.getItem("cobalt:access_token")
+}
+
+export function toIpfsGatewayUrl(cidOrUrl?: string | null): string | null {
+  if (!cidOrUrl) return null
+  const trimmed = cidOrUrl.trim()
+  if (!trimmed) return null
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:")
+  ) {
+    return trimmed
+  }
+  const ipfsGatewayUrl = (
+    process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || "http://localhost:8081/ipfs"
+  ).replace(/\/$/, "")
+  return `${ipfsGatewayUrl}/${trimmed.replace(/^ipfs:\/\//, "")}`
 }
 
 export interface CreateTeamPayload {

@@ -15,7 +15,7 @@ import {
     SelectValue,
 } from '@workspace/ui/components/select';
 import { DateTimePicker } from '@/components/ui/date-picker';
-import { fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, fetchApiMe, getStoredToken, type ApiListingTokenPrize } from '@/lib/competitions-api';
+import { createSignatureCreateCompetition, fetchListingTokenPrizes, fetchPriceCompetitionById, getTokenSymbol, fetchApiMe, getStoredToken, type ApiListingTokenPrize } from '@/lib/competitions-api';
 import { TOKENS } from '@/lib/tokens';
 
 // --- KUMPULAN IKON SVG ---
@@ -506,8 +506,6 @@ export default function CreateCompetition() {
                 guidebookCID = await uploadToKuboIPFS(guidebookFileObj);
             }
 
-            setIsUploadingIpfs(false);
-
             const toUnix = (dtStr: string): bigint => {
                 if (!dtStr) return 0n;
                 const ts = Math.floor(new Date(dtStr).getTime() / 1000);
@@ -521,26 +519,6 @@ export default function CreateCompetition() {
                 setIsUploadingIpfs(false);
                 return;
             }
-
-            const _competition = {
-                id: 0n,
-                name: name.trim(),
-                category: category.trim(),
-                description: description.trim(),
-                requirements: requirements.trim(),
-                formation: teamSize.trim(),
-                organization: (address || '0x0000000000000000000000000000000000000000') as `0x${string}`,
-                schedule: {
-                    registrationWindow: toUnix(duration.registrationEnd || duration.registrationStart),
-                    competitionWindow: toUnix(duration.competitionEnd || duration.competitionStart),
-                    submissionDeadline: toUnix(duration.submissionDeadline),
-                    judgingReview: toUnix(duration.judgingEnd || duration.judgingStart),
-                    resultAnnouncement: toUnix(duration.resultsAnnouncement),
-                    prizeCertificateClaim: prizeClaimTs,
-                },
-                certificateCID: participantCertCID || '',
-                guideBookCID: guidebookCID || '',
-            };
 
             const getTokenDecimals = async (tokenAddress: string): Promise<number> => {
                 if (!tokenAddress || tokenAddress === TOKENS.BOT.address || tokenAddress === '0x0') {
@@ -571,9 +549,15 @@ export default function CreateCompetition() {
                 return 18;
             };
 
-            const prizeTokenDecimals = await getTokenDecimals(selectedTokenAddress);
+            const prizeTokenAddressChecksum = getAddress(
+                selectedTokenAddress && isAddress(selectedTokenAddress)
+                    ? selectedTokenAddress
+                    : TOKENS.BOT.address
+            ) as `0x${string}`;
 
-            const _winners = prizes.map((p, index) => {
+            const prizeTokenDecimals = await getTokenDecimals(prizeTokenAddressChecksum);
+
+            for (const p of prizes) {
                 const rawAmount = p.amount.replace(/,/g, '').trim();
                 let prizeAmountBigInt = 0n;
                 try {
@@ -581,86 +565,97 @@ export default function CreateCompetition() {
                 } catch {
                     prizeAmountBigInt = 0n;
                 }
-                return {
-                    id: 0n,
-                    competitionId: 0n,
-                    title: p.place.trim(),
-                    prizeToken: (selectedTokenAddress || TOKENS.BOT.address) as `0x${string}`,
-                    prizeAmount: prizeAmountBigInt,
-                    certificateCID: winnerCIDs[index] || '',
-                };
-            });
-
-            for (const winner of _winners) {
-                if (winner.prizeAmount <= 0n) {
-                    setTxErrorCustom(`Prize amount for category "${winner.title}" must be greater than 0.`);
+                if (prizeAmountBigInt <= 0n) {
+                    setTxErrorCustom(`Prize amount for category "${p.place.trim()}" must be greater than 0.`);
                     setIsUploadingIpfs(false);
                     return;
                 }
             }
 
+            const _winners = prizes.map((p, index) => {
+                const rawAmount = p.amount.replace(/,/g, '').trim();
+                const prizeAmountBigInt = parseUnits(rawAmount || '0', prizeTokenDecimals);
+                return {
+                    id: 0n,
+                    competitionId: 0n,
+                    prizeToken: prizeTokenAddressChecksum,
+                    prizeAmount: prizeAmountBigInt,
+                    certificateCID: winnerCIDs[index] || '',
+                };
+            });
+
+            // Upload competition metadata JSON to Kubo IPFS to obtain competition.cid
+            const metadataPayload = {
+                name: name.trim(),
+                category: category.trim(),
+                description: description.trim(),
+                requirements: requirements.trim(),
+                formation: teamSize.trim(),
+                schedule: {
+                    registrationWindow: Number(toUnix(duration.registrationEnd || duration.registrationStart)),
+                    competitionWindow: Number(toUnix(duration.competitionEnd || duration.competitionStart)),
+                    submissionDeadline: Number(toUnix(duration.submissionDeadline)),
+                    judgingReview: Number(toUnix(duration.judgingEnd || duration.judgingStart)),
+                    resultAnnouncement: Number(toUnix(duration.resultsAnnouncement)),
+                    prizeCertificateClaim: Number(prizeClaimTs),
+                },
+                certificateCID: participantCertCID || '',
+                guideBookCID: guidebookCID || '',
+                winners: prizes.map((p, index) => ({
+                    title: p.place.trim(),
+                    prizeToken: prizeTokenAddressChecksum,
+                    prizeAmount: p.amount.replace(/,/g, '').trim(),
+                    certificateCID: winnerCIDs[index] || '',
+                    teamId: index + 1,
+                })),
+            };
+            const metadataBlob = new Blob([JSON.stringify(metadataPayload)], { type: 'application/json' });
+            const metadataFile = new File([metadataBlob], 'competition-metadata.json', { type: 'application/json' });
+            const compCid = await uploadToKuboIPFS(metadataFile);
+
+            setIsUploadingIpfs(false);
+
+            const orgAddress = getAddress(address) as `0x${string}`;
+            const _payment = {
+                tokenAddress: prizeTokenAddressChecksum,
+                fee: 0n,
+            };
+
+            const _competition = {
+                id: 0n,
+                cid: compCid,
+                formation: teamSize.trim(),
+                organization: orgAddress,
+                prizeCertificateClaim: prizeClaimTs,
+                certificateCID: participantCertCID || '',
+                payment: _payment,
+            };
+
             const feeIdBigInt = BigInt(priceCompetitionFeeId || 1);
 
-            // Fetch platform fee configuration directly from on-chain PriceCompetitionManager
+            // Fetch platform fee configuration directly from CompetitionManager
             let feeWei = 0n;
             let feeToken = feeTokenAddress;
 
-            let priceCompetitionManagerAddress = process.env.NEXT_PUBLIC_PRICE_COMPETITION_MANAGER_CONTRACT as `0x${string}`;
-            if (!priceCompetitionManagerAddress && publicClient) {
+            if (publicClient) {
                 try {
-                    priceCompetitionManagerAddress = await publicClient.readContract({
+                    const feeData = await publicClient.readContract({
                         address: getAddress(competitionContractAddress),
                         abi: CompetitionManagerABI as any,
-                        functionName: 'priceCompetitionManagerContract',
-                    }) as `0x${string}`;
-                } catch (e) {
-                    console.warn('Could not fetch priceCompetitionManagerContract address:', e);
-                }
-            }
-
-            if (priceCompetitionManagerAddress && publicClient) {
-                try {
-                    const feeAbi = [
-                        {
-                            constant: true,
-                            inputs: [{ name: '_priceCompetitionFeeId', type: 'uint256' }],
-                            name: 'getPriceCompetitionFee',
-                            outputs: [
-                                {
-                                    components: [
-                                        { name: 'id', type: 'uint256' },
-                                        { name: 'treasuryFee', type: 'uint256' },
-                                        { name: 'tokenAddress', type: 'address' },
-                                        { name: 'title', type: 'string' },
-                                        { name: 'description', type: 'string' },
-                                    ],
-                                    name: '',
-                                    type: 'tuple',
-                                },
-                            ],
-                            payable: false,
-                            stateMutability: 'view',
-                            type: 'function',
-                        },
-                    ] as const;
-
-                    const feeData = await publicClient.readContract({
-                        address: priceCompetitionManagerAddress,
-                        abi: feeAbi,
                         functionName: 'getPriceCompetitionFee',
                         args: [feeIdBigInt],
-                    }) as { id: bigint; treasuryFee: bigint; tokenAddress: `0x${string}`; title: string; description: string };
+                    }) as { id: bigint; treasuryFee: bigint; tokenAddress: `0x${string}`; cid: string };
 
                     if (feeData && feeData.id !== 0n) {
                         feeWei = feeData.treasuryFee;
                         feeToken = feeData.tokenAddress;
                     } else {
-                        setTxErrorCustom(`Fee option ID ${feeIdBigInt.toString()} does not exist in PriceCompetitionManager.`);
+                        setTxErrorCustom(`Fee option ID ${feeIdBigInt.toString()} does not exist in CompetitionManager.`);
                         setIsUploadingIpfs(false);
                         return;
                     }
                 } catch (e) {
-                    console.warn('Could not query PriceCompetitionManager on-chain fee, using API fallback:', e);
+                    console.warn('Could not query CompetitionManager on-chain fee, using API fallback:', e);
                     if (feeTreasuryAmount) {
                         try {
                             feeWei = typeof feeTreasuryAmount === 'string' && feeTreasuryAmount.includes('.')
@@ -716,55 +711,31 @@ export default function CreateCompetition() {
                 }
             }
 
-            // Pre-flight check: Verify prize token is listed and active on ListingTokenPrizeContract
-            let listingTokenPrizeAddress = process.env.NEXT_PUBLIC_LISTING_TOKEN_PRIZE_CONTRACT as `0x${string}`;
-            if (!listingTokenPrizeAddress && publicClient) {
+            // Pre-flight check: Verify prize token is listed and active on CompetitionManager
+            if (publicClient) {
                 try {
-                    listingTokenPrizeAddress = await publicClient.readContract({
+                    const isListed = await publicClient.readContract({
                         address: getAddress(competitionContractAddress),
                         abi: CompetitionManagerABI as any,
-                        functionName: 'listingTokenPrizeContract',
-                    }) as `0x${string}`;
-                } catch (e) {
-                    console.warn('Could not fetch listingTokenPrizeContract:', e);
-                }
-            }
+                        functionName: 'isTokenListed',
+                        args: [prizeTokenAddressChecksum],
+                    }) as boolean;
 
-            if (listingTokenPrizeAddress && publicClient) {
-                try {
-                    const prizeTokenAddr = getAddress(selectedTokenAddress || TOKENS.BOT.address) as `0x${string}`;
-                    const listingTokenAbi = [
-                        {
-                            constant: true,
-                            inputs: [{ name: '_tokenAddress', type: 'address' }],
-                            name: 'listingToken',
-                            outputs: [
-                                { name: 'id', type: 'uint256' },
-                                { name: 'tokenAddress', type: 'address' },
-                                { name: 'isActive', type: 'bool' },
-                            ],
-                            payable: false,
-                            stateMutability: 'view',
-                            type: 'function',
-                        },
-                    ] as const;
-
-                    const tokenInfo = await publicClient.readContract({
-                        address: listingTokenPrizeAddress,
-                        abi: listingTokenAbi,
-                        functionName: 'listingToken',
-                        args: [prizeTokenAddr],
-                    }) as any;
-
-                    const listingId = Array.isArray(tokenInfo) ? BigInt(tokenInfo[0]) : (tokenInfo?.id ? BigInt(tokenInfo.id) : 0n);
-                    const isPrizeActive = Array.isArray(tokenInfo) ? Boolean(tokenInfo[2]) : Boolean(tokenInfo?.isActive);
-                    if (listingId === 0n) {
-                        setTxErrorCustom(`Prize token (${prizeTokenAddr}) is not listed in ListingTokenPrizeContract.`);
+                    if (!isListed) {
+                        setTxErrorCustom(`Prize token (${prizeTokenAddressChecksum}) is not listed in CompetitionManager.`);
                         setIsUploadingIpfs(false);
                         return;
                     }
-                    if (!isPrizeActive) {
-                        setTxErrorCustom(`Prize token (${prizeTokenAddr}) is deactivated in ListingTokenPrizeContract.`);
+
+                    const isActive = await publicClient.readContract({
+                        address: getAddress(competitionContractAddress),
+                        abi: CompetitionManagerABI as any,
+                        functionName: 'isTokenActive',
+                        args: [prizeTokenAddressChecksum],
+                    }) as boolean;
+
+                    if (!isActive) {
+                        setTxErrorCustom(`Prize token (${prizeTokenAddressChecksum}) is deactivated in CompetitionManager.`);
                         setIsUploadingIpfs(false);
                         return;
                     }
@@ -809,111 +780,119 @@ export default function CreateCompetition() {
                 },
             ] as const;
 
+            const spenderAddress = getAddress(competitionContractAddress);
+
             // Check and approve ERC20 Fee Token allowance if needed
             if (!isNativeFeeToken && feeWei > 0n && publicClient) {
-                let treasuryPlatformAddress = process.env.NEXT_PUBLIC_TREASURY_PLATFORM_CONTRACT as `0x${string}`;
-                if (!treasuryPlatformAddress) {
-                    try {
-                        treasuryPlatformAddress = await publicClient.readContract({
-                            address: competitionContractAddress,
-                            abi: CompetitionManagerABI as any,
-                            functionName: 'treasuryPlatformContract',
-                        }) as `0x${string}`;
-                    } catch (e) {
-                        console.warn('Could not fetch treasuryPlatformContract:', e);
-                    }
+                const feeTokenChecksum = getAddress(feeToken) as `0x${string}`;
+                const feeTokenBalance = await publicClient.readContract({
+                    address: feeTokenChecksum,
+                    abi: erc20Abi,
+                    functionName: 'balanceOf',
+                    args: [address],
+                }) as bigint;
+
+                if (feeTokenBalance < feeWei) {
+                    setTxErrorCustom(`Insufficient Fee Token balance (${feeTokenChecksum}). Required: ${feeWei.toString()}, Balance: ${feeTokenBalance.toString()}`);
+                    setIsUploadingIpfs(false);
+                    return;
                 }
 
-                if (treasuryPlatformAddress) {
-                    const feeTokenBalance = await publicClient.readContract({
-                        address: feeTokenAddress as `0x${string}`,
+                const allowanceFee = await publicClient.readContract({
+                    address: feeTokenChecksum,
+                    abi: erc20Abi,
+                    functionName: 'allowance',
+                    args: [address, spenderAddress],
+                }) as bigint;
+
+                if (allowanceFee < feeWei) {
+                    const approveFeeTx = await writeContractAsync({
+                        address: feeTokenChecksum,
                         abi: erc20Abi,
-                        functionName: 'balanceOf',
-                        args: [address],
-                    }) as bigint;
-
-                    if (feeTokenBalance < feeWei) {
-                        setTxErrorCustom(`Insufficient Fee Token balance (${feeTokenAddress}). Required: ${feeWei.toString()}, Balance: ${feeTokenBalance.toString()}`);
-                        setIsUploadingIpfs(false);
-                        return;
-                    }
-
-                    const allowanceFee = await publicClient.readContract({
-                        address: feeTokenAddress as `0x${string}`,
-                        abi: erc20Abi,
-                        functionName: 'allowance',
-                        args: [address, treasuryPlatformAddress],
-                    }) as bigint;
-
-                    if (allowanceFee < feeWei) {
-                        const approveFeeTx = await writeContractAsync({
-                            address: feeTokenAddress as `0x${string}`,
-                            abi: erc20Abi,
-                            functionName: 'approve',
-                            args: [treasuryPlatformAddress, feeWei],
-                        });
-                        if (publicClient) {
-                            await publicClient.waitForTransactionReceipt({ hash: approveFeeTx });
-                        }
-                    }
+                        functionName: 'approve',
+                        args: [spenderAddress, feeWei],
+                    });
+                    await publicClient.waitForTransactionReceipt({ hash: approveFeeTx });
                 }
             }
 
             // Check and approve ERC20 Prize Token allowance if needed
             if (!isNativePrizeToken && totalPrizeWei > 0n && publicClient) {
-                let treasuryPrizeAddress = process.env.NEXT_PUBLIC_TREASURY_PRIZE_CONTRACT as `0x${string}`;
-                if (!treasuryPrizeAddress) {
-                    try {
-                        treasuryPrizeAddress = await publicClient.readContract({
-                            address: competitionContractAddress,
-                            abi: CompetitionManagerABI as any,
-                            functionName: 'treasuryPrizeContract',
-                        }) as `0x${string}`;
-                    } catch (e) {
-                        console.warn('Could not fetch treasuryPrizeContract:', e);
-                    }
+                const prizeTokenBalance = await publicClient.readContract({
+                    address: prizeTokenAddressChecksum,
+                    abi: erc20Abi,
+                    functionName: 'balanceOf',
+                    args: [address],
+                }) as bigint;
+
+                if (prizeTokenBalance < totalPrizeWei) {
+                    setTxErrorCustom(`Insufficient Prize Token balance (${prizeTokenAddressChecksum}). Required: ${totalPrizeWei.toString()}, Balance: ${prizeTokenBalance.toString()}`);
+                    setIsUploadingIpfs(false);
+                    return;
                 }
 
-                if (treasuryPrizeAddress) {
-                    const prizeTokenBalance = await publicClient.readContract({
-                        address: selectedTokenAddress as `0x${string}`,
+                const allowancePrize = await publicClient.readContract({
+                    address: prizeTokenAddressChecksum,
+                    abi: erc20Abi,
+                    functionName: 'allowance',
+                    args: [address, spenderAddress],
+                }) as bigint;
+
+                if (allowancePrize < totalPrizeWei) {
+                    const approvePrizeTx = await writeContractAsync({
+                        address: prizeTokenAddressChecksum,
                         abi: erc20Abi,
-                        functionName: 'balanceOf',
-                        args: [address],
-                    }) as bigint;
-
-                    if (prizeTokenBalance < totalPrizeWei) {
-                        setTxErrorCustom(`Insufficient Prize Token balance (${selectedTokenAddress}). Required: ${totalPrizeWei.toString()}, Balance: ${prizeTokenBalance.toString()}`);
-                        setIsUploadingIpfs(false);
-                        return;
-                    }
-
-                    const allowancePrize = await publicClient.readContract({
-                        address: selectedTokenAddress as `0x${string}`,
-                        abi: erc20Abi,
-                        functionName: 'allowance',
-                        args: [address, treasuryPrizeAddress],
-                    }) as bigint;
-
-                    if (allowancePrize < totalPrizeWei) {
-                        const approvePrizeTx = await writeContractAsync({
-                            address: selectedTokenAddress as `0x${string}`,
-                            abi: erc20Abi,
-                            functionName: 'approve',
-                            args: [treasuryPrizeAddress, totalPrizeWei],
-                        });
-                        if (publicClient) {
-                            await publicClient.waitForTransactionReceipt({ hash: approvePrizeTx });
-                        }
-                    }
+                        functionName: 'approve',
+                        args: [spenderAddress, totalPrizeWei],
+                    });
+                    await publicClient.waitForTransactionReceipt({ hash: approvePrizeTx });
                 }
             }
 
+            // Generate EIP-191 signature from API (POST /api/v1/chains/:chain_id/competitions/signature-create-competition)
+            const sigRes = await createSignatureCreateCompetition(
+                chainId,
+                {
+                    competition: {
+                        id: '0',
+                        cid: _competition.cid,
+                        formation: _competition.formation,
+                        organization: _competition.organization,
+                        prizeCertificateClaim: _competition.prizeCertificateClaim.toString(),
+                        certificateCID: _competition.certificateCID,
+                        payment: {
+                            tokenAddress: _payment.tokenAddress,
+                            fee: _payment.fee.toString(),
+                        },
+                    },
+                    payment: {
+                        tokenAddress: _payment.tokenAddress,
+                        fee: _payment.fee.toString(),
+                    },
+                    winners: _winners.map((w) => ({
+                        id: w.id.toString(),
+                        competitionId: w.competitionId.toString(),
+                        prizeToken: w.prizeToken,
+                        prizeAmount: w.prizeAmount.toString(),
+                        certificateCID: w.certificateCID,
+                    })),
+                    priceCompetitionFeeId: feeIdBigInt.toString(),
+                },
+                storedToken || getStoredToken(),
+            );
+
+            const signature = sigRes?.data?.signature as `0x${string}` | undefined;
+            if (!signature) {
+                setTxErrorCustom('Failed to obtain createCompetition signature from server.');
+                setIsUploadingIpfs(false);
+                return;
+            }
+
             await writeContractAsync({
-                address: competitionContractAddress,
+                address: getAddress(competitionContractAddress),
                 abi: CompetitionManagerABI as any,
                 functionName: 'createCompetition',
-                args: [_competition, _winners, feeIdBigInt],
+                args: [_competition, _payment, _winners, feeIdBigInt, signature],
                 value: txValue,
             });
         } catch (err: any) {

@@ -33,6 +33,7 @@ export function AccountMenu() {
   const isOrganization =
     meUser?.role === "organization" || meUser?.role === "organizer"
   const dashboardHref = isOrganization ? routes.organization : routes.dashboard
+  const profileHref = isOrganization ? routes.organizationProfile : routes.profile
 
   return (
     <DropdownMenu.Root>
@@ -47,9 +48,11 @@ export function AccountMenu() {
           <DropdownMenu.Popup className="w-80 max-w-[calc(100vw_-_2rem)] rounded-xl border border-border bg-white p-2 shadow-xl outline-none">
             {[
               {
-                href: routes.profile,
+                href: profileHref,
                 title: "Profile",
-                description: "View & edit your builder credentials",
+                description: isOrganization
+                  ? "View & edit your organization profile"
+                  : "View & edit your builder credentials",
                 icon: ContactRound,
               },
               {
