@@ -156,16 +156,15 @@ export function WorkspaceAnnouncements({
     Array.isArray(prizeWinners) ? [...prizeWinners] : []
   )
   const [mintedWinnerIds, setMintedWinnerIds] = useState<Record<string, boolean>>({})
-  const [mintingWinnerId, setMintingWinnerId] = useState<string | null>(null)
+  const [mintingWinnerIds, setMintingWinnerIds] = useState<Record<string, boolean>>({})
   const [winnerMintErrors, setWinnerMintErrors] = useState<Record<string, string | null>>({})
   const [participantMintError, setParticipantMintError] = useState<string | null>(null)
+  const [isParticipantMinting, setIsParticipantMinting] = useState(false)
+  const [isParticipantMintedLocally, setIsParticipantMintedLocally] = useState(false)
   const [isMintedBackend, setIsMintedBackend] = useState(false)
   const { toast } = useToast()
   const { connected } = useSiteActions()
-  const { writeContractAsync, data: mintTxHash, isPending: isMintPending } =
-    useWriteContract()
-  const { isLoading: isMintConfirming, isSuccess: isMinted } =
-    useWaitForTransactionReceipt({ hash: mintTxHash })
+  const { writeContractAsync } = useWriteContract()
   const { writeContractAsync: writeWinnerAsync } = useWriteContract()
 
   const chainId = useChainId()
@@ -216,11 +215,12 @@ export function WorkspaceAnnouncements({
   const isAvailable = Boolean(
     pirzeCertificateClaim && new Date() >= new Date(pirzeCertificateClaim)
   )
-  const isMinting = isMintPending || isMintConfirming
+  const isParticipantDone = isMintedBackend || isParticipantMintedLocally
   const competitionContractAddress = getCompetitionContractAddress()
 
   const handleMintParticipantCertificate = async () => {
     setParticipantMintError(null)
+    setIsParticipantMinting(true)
     try {
       if (!teamId) {
         throw new Error("Team ID is required to mint a participant certificate — join or create a team first.")
@@ -258,16 +258,28 @@ export function WorkspaceAnnouncements({
           console.error("[mintParticipant][simulate] revert", name, simErr)
           const full = `${name ? name + ": " : ""}${msg}`
           setParticipantMintError(full)
+          if (name === "CertificateAlreadyClaimed") {
+            setIsParticipantMintedLocally(true)
+          }
           toast({ variant: "destructive", title: "Mint gagal (pre-check)", description: full })
           return
         }
       }
 
-      await writeContractAsync({
+      const hash = await writeContractAsync({
         address: competitionContractAddress,
         abi: CompetitionManagerABI as any,
         functionName: "safeMintCertificateParticipant",
         args: [BigInt(onchainCompetitionId), String(teamId), signature as `0x${string}`, cid as string],
+      })
+
+      if (publicClient && hash) {
+        await publicClient.waitForTransactionReceipt({ hash })
+      }
+      setIsParticipantMintedLocally(true)
+      toast({
+        title: "Sertifikat Berhasil Di-mint!",
+        description: "Participant Certificate berhasil di-mint sebagai NFT.",
       })
     } catch (error: any) {
       const status: number | undefined =
@@ -284,7 +296,12 @@ export function WorkspaceAnnouncements({
       console.error("[mintParticipant] revert", name, error)
       const full = `${name ? name + ": " : ""}${msg}`
       setParticipantMintError(full)
+      if (name === "CertificateAlreadyClaimed") {
+        setIsParticipantMintedLocally(true)
+      }
       toast({ variant: "destructive", title: "Failed to mint certificate", description: full })
+    } finally {
+      setIsParticipantMinting(false)
     }
   }
 
@@ -294,7 +311,7 @@ export function WorkspaceAnnouncements({
   ) => {
     const key = targetWinnerId ? String(targetWinnerId) : "default"
     setWinnerMintErrors((prev) => ({ ...prev, [key]: null }))
-    setMintingWinnerId(key)
+    setMintingWinnerIds((prev) => ({ ...prev, [key]: true }))
 
     try {
       if (!connectedAddress) throw new Error("Wallet belum connect.")
@@ -389,7 +406,7 @@ export function WorkspaceAnnouncements({
         description: full,
       })
     } finally {
-      setMintingWinnerId(null)
+      setMintingWinnerIds((prev) => ({ ...prev, [key]: false }))
     }
   }
 
@@ -420,17 +437,17 @@ export function WorkspaceAnnouncements({
             </span>
           </div>
           <button
-            disabled={!isAvailable || isMinting || isMinted || isMintedBackend}
+            disabled={!isAvailable || isParticipantMinting || isParticipantDone}
             onClick={handleMintParticipantCertificate}
             className={`mt-5 rounded-lg px-3 py-3 text-xs ${
-              isAvailable && !isMinting && !isMinted && !isMintedBackend
+              isAvailable && !isParticipantMinting && !isParticipantDone
                 ? "bg-slate-900 text-white hover:bg-slate-800"
                 : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {isMinted || isMintedBackend
+            {isParticipantDone
               ? "Participant Certificate Minted"
-              : isMinting
+              : isParticipantMinting
                 ? "Minting Participant Certificate..."
                 : "Mint Participant Certificate NFT"}
           </button>
@@ -467,7 +484,7 @@ export function WorkspaceAnnouncements({
               winner.title ||
               `Winner Certificate #${idx + 1}`
             const winCid = winner.certificate_cid || certificateCid
-            const isWinnerMintingItem = mintingWinnerId === targetWinnerId
+            const isWinnerMintingItem = Boolean(mintingWinnerIds[targetWinnerId])
             const isWinnerMintedItem = Boolean(mintedWinnerIds[targetWinnerId])
             const itemError = winnerMintErrors[targetWinnerId]
 
@@ -499,8 +516,7 @@ export function WorkspaceAnnouncements({
                   disabled={
                     !isAvailable ||
                     isWinnerMintingItem ||
-                    isWinnerMintedItem ||
-                    mintingWinnerId !== null
+                    isWinnerMintedItem
                   }
                   onClick={() =>
                     handleMintWinnerCertificate(targetWinnerId, title)
@@ -508,8 +524,7 @@ export function WorkspaceAnnouncements({
                   className={`mt-5 rounded-lg px-3 py-3 text-xs ${
                     isAvailable &&
                     !isWinnerMintingItem &&
-                    !isWinnerMintedItem &&
-                    mintingWinnerId === null
+                    !isWinnerMintedItem
                       ? "bg-slate-900 text-white hover:bg-slate-800"
                       : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
                   }`}
@@ -563,13 +578,13 @@ export function WorkspaceAnnouncements({
             <button
               disabled={
                 !isAvailable ||
-                mintingWinnerId !== null ||
+                Boolean(mintingWinnerIds["default"]) ||
                 Boolean(mintedWinnerIds["default"])
               }
               onClick={() => handleMintWinnerCertificate(null, "")}
               className={`mt-5 rounded-lg px-3 py-3 text-xs ${
                 isAvailable &&
-                mintingWinnerId === null &&
+                !mintingWinnerIds["default"] &&
                 !mintedWinnerIds["default"]
                   ? "bg-slate-900 text-white hover:bg-slate-800"
                   : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
@@ -577,7 +592,7 @@ export function WorkspaceAnnouncements({
             >
               {mintedWinnerIds["default"]
                 ? "Winner Certificate Minted"
-                : mintingWinnerId === "default"
+                : mintingWinnerIds["default"]
                   ? "Minting Winner Certificate..."
                   : "Mint Winner Certificate NFT"}
             </button>
