@@ -51,7 +51,6 @@ const partners = [
   { name: "Tether", logo: "/tether.png" },
   { name: "Indodax", logo: "/indodax.png" },
   { name: "Binance", logo: "/binance.png" },
-  { name: "Bittensor", logo: "/bittensor.webp" },
 ]
 
 function formatEscrowAmount(val: number | null | undefined): string {

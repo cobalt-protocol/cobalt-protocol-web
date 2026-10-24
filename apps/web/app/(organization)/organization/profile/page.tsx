@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAccount, useBalance, useChainId } from "wagmi";
 import { formatUnits } from "viem";
@@ -67,9 +68,10 @@ function shortenAddress(addr?: string | null): string {
 }
 
 export default function OrganizationProfilePage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const chainId = useChainId();
-  const { address, isConnected, chain } = useAccount();
+  const { address, isConnected, status: accountStatus, chain } = useAccount();
   const { data: balanceData } = useBalance({
     address,
     query: { enabled: Boolean(address) },
@@ -78,6 +80,7 @@ export default function OrganizationProfilePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [storedToken, setStoredToken] = useState<string | null>(null);
+  const [hasCheckedToken, setHasCheckedToken] = useState(false);
   const [name, setName] = useState<string>("");
   const [description, setDescription] = useState<string>("");
   const [avatarUrl, setAvatarUrl] = useState<string>("");
@@ -93,7 +96,20 @@ export default function OrganizationProfilePage() {
 
   useEffect(() => {
     setStoredToken(getStoredToken());
+    setHasCheckedToken(true);
   }, []);
+
+  const isWagmiLoading =
+    accountStatus === "connecting" || accountStatus === "reconnecting";
+  const token = storedToken || getStoredToken();
+  const isUnauthenticated =
+    hasCheckedToken && !isWagmiLoading && !isConnected && !token;
+
+  useEffect(() => {
+    if (isUnauthenticated) {
+      router.replace(routes.home);
+    }
+  }, [isUnauthenticated, router]);
 
   const { data: meUser, isLoading: isLoadingMe } = useQuery({
     queryKey: ["user-me", storedToken],
@@ -244,6 +260,10 @@ export default function OrganizationProfilePage() {
       : "≈ Rp 20.250.000";
 
   const networkName = chain?.name || "Base";
+
+  if (isUnauthenticated) {
+    return null;
+  }
 
   return (
     <div className="w-full min-h-[calc(100vh-80px)] bg-[#F8F9FF] py-8 md:py-10 font-sans text-slate-800">

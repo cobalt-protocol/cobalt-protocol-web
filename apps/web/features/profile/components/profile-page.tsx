@@ -2,6 +2,9 @@
 import { Breadcrumbs, PageContainer } from "@/components/ui/page-primitives"
 import { routes } from "@/lib/routes"
 import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
+import { useAccount } from "wagmi"
+import { getStoredToken } from "@/lib/competitions-api"
 import {
   emptyProfile,
   mockProfile,
@@ -25,7 +28,28 @@ export function ProfilePage({
   resumeCompetition?: RegistrationCompetition
   startEditing?: boolean
 }) {
+  const router = useRouter()
+  const { isConnected, status: accountStatus } = useAccount()
   const { sessionToken, user, register } = useSiteActions()
+  const [storedToken, setStoredToken] = useState<string | null>(null)
+  const [hasCheckedToken, setHasCheckedToken] = useState(false)
+
+  useEffect(() => {
+    setStoredToken(getStoredToken())
+    setHasCheckedToken(true)
+  }, [])
+
+  const isWagmiLoading =
+    accountStatus === "connecting" || accountStatus === "reconnecting"
+  const token = storedToken || getStoredToken() || sessionToken
+  const isUnauthenticated =
+    hasCheckedToken && !isWagmiLoading && !isConnected && !token
+
+  useEffect(() => {
+    if (isUnauthenticated) {
+      router.replace(routes.home)
+    }
+  }, [isUnauthenticated, router])
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -123,6 +147,10 @@ export function ProfilePage({
       }
       return true
     }
+  }
+
+  if (isUnauthenticated) {
+    return null
   }
 
   return (
