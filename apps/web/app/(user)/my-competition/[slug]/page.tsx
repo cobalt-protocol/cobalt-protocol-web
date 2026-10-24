@@ -20,6 +20,8 @@ import type { Metadata } from "next"
  * - safeMintCertificateParticipantWinner(uint256 _winnerId, bytes signature, string _cid)
  *   verifikasi: keccak256(abi.encodePacked(address(this), msg.sender, _winnerId, uri))
  *   uri = ipfs:// + _cid (IPFSHelper.toIPFSURI). _cid juga dari fetchWinnerCertificateSignature.
+ *   Status minted diverifikasi dari table `certificate_participant_winner_minted` via
+ *   `fetchMyWinnerMinted(chainId, competitionId)`.
  *
  * Helper ABIs (CertificateHelper.json, IPFSHelper.json, FormationHelper.json) kini kosong []
  * karena library internal — frontend hanya pakai CompetitionManager.json untuk mint.

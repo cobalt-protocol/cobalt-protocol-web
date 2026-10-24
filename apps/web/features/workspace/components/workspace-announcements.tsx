@@ -10,6 +10,7 @@ import {
   fetchParticipantCertificateSignature,
   fetchWinnerCertificateSignature,
   fetchMyParticipantMinted,
+  fetchMyWinnerMinted,
   fetchPrizeWinnersByCompetitionId,
 } from "@/lib/competitions-api"
 import { getCompetitionContractAddress } from "@/lib/contracts"
@@ -209,6 +210,31 @@ export function WorkspaceAnnouncements({
         })
     }
   }, [teamId, mounted, connectedAddress])
+
+  useEffect(() => {
+    if (competitionId && mounted && connectedAddress) {
+      fetchMyWinnerMinted(effectiveChainId, competitionId)
+        .then((res) => {
+          const list = Array.isArray(res?.data)
+            ? res.data
+            : Array.isArray(res)
+              ? res
+              : []
+          if (list.length > 0) {
+            const mintedMap: Record<string, boolean> = {}
+            for (const item of list) {
+              if (item?.winner_id !== undefined && item?.winner_id !== null) {
+                mintedMap[String(item.winner_id)] = true
+              }
+            }
+            if (Object.keys(mintedMap).length > 0) {
+              setMintedWinnerIds((prev) => ({ ...prev, ...mintedMap }))
+            }
+          }
+        })
+        .catch(() => {})
+    }
+  }, [competitionId, effectiveChainId, mounted, connectedAddress])
 
   if (!mounted || !connected) return null
 

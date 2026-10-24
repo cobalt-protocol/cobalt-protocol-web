@@ -157,6 +157,82 @@ export async function fetchMyParticipantMinted(
   }
 }
 
+export async function fetchMyWinnerMinted(
+  chainIdOrCompetitionId: number | string,
+  competitionIdOrToken?: string | null,
+  tokenMaybe?: string | null,
+): Promise<{ data: any[]; message?: string; errors?: any }> {
+  let chainId: number
+  let competitionId: string
+  let token: string | null | undefined
+
+  if (typeof chainIdOrCompetitionId === "number") {
+    chainId = resolveChainId(chainIdOrCompetitionId)
+    competitionId = competitionIdOrToken as string
+    token = tokenMaybe
+  } else {
+    chainId = DEFAULT_CHAIN_ID
+    competitionId = chainIdOrCompetitionId as string
+    token = competitionIdOrToken
+  }
+
+  if (!competitionId) {
+    throw new Error("competitionId is required to fetch winner minted certificates")
+  }
+
+  const authToken = token || getStoredToken()
+  if (!authToken) {
+    throw new Error("You must be authenticated to fetch winner minted certificates.")
+  }
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
+  }
+
+  try {
+    let response = await fetch(
+      `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(competitionId)}/certificate-participant-winner-minted`,
+      {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      },
+    )
+
+    if (response.status === 404) {
+      const fallbackRes = await fetch(
+        `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/certificate-participant-winner-minted`,
+        {
+          method: "GET",
+          headers,
+          cache: "no-store",
+        },
+      ).catch(() => null)
+      if (fallbackRes && fallbackRes.ok) {
+        response = fallbackRes
+      }
+    }
+
+    if (response.status === 404) {
+      return { data: [] }
+    }
+
+    const payload = await response.json().catch(() => null)
+    if (!response.ok) {
+      throw new Error(
+        payload?.message ||
+          `Failed to fetch winner minted certificates (${response.status})`,
+      )
+    }
+
+    return payload
+  } catch (error: any) {
+    console.error("fetchMyWinnerMinted error:", error)
+    throw error
+  }
+}
+
 export async function fetchParticipantCertificateSignature(
   chainIdOrCompetitionId: number | string,
   competitionIdOrTeamId?: string,
