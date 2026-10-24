@@ -146,6 +146,11 @@ export function CompetitionWorkspace({
           certificateCid={competition.certificate_cid}
           pirzeCertificateClaim={competition.pirze_certificate_claim}
           teamId={teamId}
+          prizeWinners={
+            competition.prize_winners && competition.prize_winners.length > 0
+              ? competition.prize_winners
+              : competition.prizes
+          }
         />
       </div>
     </PageContainer>

@@ -6,7 +6,12 @@ import { BaseError, decodeErrorResult, getAddress, isAddress, keccak256, stringT
 import { Badge, Panel, SectionHeading } from "@/components/ui/page-primitives"
 import { useSiteActions } from "@/components/layout/site-actions"
 import CompetitionManagerABI from "@/abi/CompetitionManager.json"
-import { fetchParticipantCertificateSignature, fetchWinnerCertificateSignature, fetchMyParticipantMinted } from "@/lib/competitions-api"
+import {
+  fetchParticipantCertificateSignature,
+  fetchWinnerCertificateSignature,
+  fetchMyParticipantMinted,
+  fetchPrizeWinnersByCompetitionId,
+} from "@/lib/competitions-api"
 import { getCompetitionContractAddress } from "@/lib/contracts"
 import { useToast } from "@/hooks/use-toast"
 
@@ -137,15 +142,22 @@ export function WorkspaceAnnouncements({
   certificateCid,
   pirzeCertificateClaim,
   teamId,
+  prizeWinners = [],
 }: {
   competitionId: string
   onchainCompetitionId?: string | null
   certificateCid?: string | null
   pirzeCertificateClaim?: string | null
   teamId?: string | null
+  prizeWinners?: readonly any[]
 }) {
   const [mounted, setMounted] = useState(false)
-  const [winnerMintError, setWinnerMintError] = useState<string | null>(null)
+  const [winnerList, setWinnerList] = useState<any[]>(() =>
+    Array.isArray(prizeWinners) ? [...prizeWinners] : []
+  )
+  const [mintedWinnerIds, setMintedWinnerIds] = useState<Record<string, boolean>>({})
+  const [mintingWinnerId, setMintingWinnerId] = useState<string | null>(null)
+  const [winnerMintErrors, setWinnerMintErrors] = useState<Record<string, string | null>>({})
   const [participantMintError, setParticipantMintError] = useState<string | null>(null)
   const [isMintedBackend, setIsMintedBackend] = useState(false)
   const { toast } = useToast()
@@ -154,10 +166,7 @@ export function WorkspaceAnnouncements({
     useWriteContract()
   const { isLoading: isMintConfirming, isSuccess: isMinted } =
     useWaitForTransactionReceipt({ hash: mintTxHash })
-  const { writeContractAsync: writeWinnerAsync, data: winnerTxHash, isPending: isWinnerPending } =
-    useWriteContract()
-  const { isLoading: isWinnerConfirming, isSuccess: isWinnerMinted } =
-    useWaitForTransactionReceipt({ hash: winnerTxHash })
+  const { writeContractAsync: writeWinnerAsync } = useWriteContract()
 
   const chainId = useChainId()
   const { address: connectedAddress } = useAccount()
@@ -167,6 +176,20 @@ export function WorkspaceAnnouncements({
   useEffect(() => {
     setMounted(true)
   }, [])
+
+  useEffect(() => {
+    if (Array.isArray(prizeWinners) && prizeWinners.length > 0) {
+      setWinnerList([...prizeWinners])
+    } else if (competitionId) {
+      fetchPrizeWinnersByCompetitionId(effectiveChainId, competitionId)
+        .then((res) => {
+          if (Array.isArray(res) && res.length > 0) {
+            setWinnerList(res)
+          }
+        })
+        .catch(() => {})
+    }
+  }, [prizeWinners, effectiveChainId, competitionId])
 
   useEffect(() => {
     if (teamId && mounted && connectedAddress) {
@@ -194,7 +217,6 @@ export function WorkspaceAnnouncements({
     pirzeCertificateClaim && new Date() >= new Date(pirzeCertificateClaim)
   )
   const isMinting = isMintPending || isMintConfirming
-  const isWinnerMinting = isWinnerPending || isWinnerConfirming
   const competitionContractAddress = getCompetitionContractAddress()
 
   const handleMintParticipantCertificate = async () => {
@@ -266,55 +288,108 @@ export function WorkspaceAnnouncements({
     }
   }
 
-  const handleMintWinnerCertificate = async () => {
-    setWinnerMintError(null)
+  const handleMintWinnerCertificate = async (
+    targetWinnerId?: string | null,
+    itemTitle?: string
+  ) => {
+    const key = targetWinnerId ? String(targetWinnerId) : "default"
+    setWinnerMintErrors((prev) => ({ ...prev, [key]: null }))
+    setMintingWinnerId(key)
+
     try {
       if (!connectedAddress) throw new Error("Wallet belum connect.")
-      const resp: any = await fetchWinnerCertificateSignature(effectiveChainId, competitionId)
+      const resp: any = await fetchWinnerCertificateSignature(
+        effectiveChainId,
+        competitionId,
+        targetWinnerId || null
+      )
       const data = resp?.data
       const signature = data?.signature as string | undefined
-      const winnerId = data?.winner_id as string | undefined
+      const winnerIdFromApi = data?.winner_id ? String(data.winner_id) : targetWinnerId
       const cid: string | null =
         (data?.cid as string | null) ??
         (data?.certificate_cid as string | null) ??
         (data?.uri ? String(data.uri).replace(/^ipfs:\/\//, "") : null)
-      if (!signature || !winnerId || !cid) {
-        throw new Error(resp?.message || data?.message || "Winner certificate signature/CID not available — you may not be a winner for this competition.")
+
+      if (!signature || !winnerIdFromApi || !cid) {
+        throw new Error(
+          resp?.message ||
+            data?.message ||
+            "Winner certificate signature/CID not available — you may not be a winner for this category."
+        )
       }
+
+      const onchainWinnerId = BigInt(winnerIdFromApi)
+
       if (publicClient && connectedAddress) {
         try {
           await publicClient.simulateContract({
             address: competitionContractAddress,
             abi: CompetitionManagerABI as any,
             functionName: "safeMintCertificateParticipantWinner",
-            args: [BigInt(winnerId), signature as `0x${string}`, cid as string],
+            args: [onchainWinnerId, signature as `0x${string}`, cid as string],
             account: connectedAddress as `0x${string}`,
           })
         } catch (simErr: any) {
           const name = decodeCertificateErrorName(simErr)
-          const raw = simErr?.shortMessage || simErr?.cause?.shortMessage || simErr?.message || "Simulate failed"
+          const raw =
+            simErr?.shortMessage ||
+            simErr?.cause?.shortMessage ||
+            simErr?.message ||
+            "Simulate failed"
           const msg = friendlyCertificateError(name, raw)
           console.error("[mintWinner][simulate] revert", name, simErr)
           const full = `${name ? name + ": " : ""}${msg}`
-          setWinnerMintError(full)
-          toast({ variant: "destructive", title: "Mint gagal (pre-check)", description: full })
+          setWinnerMintErrors((prev) => ({ ...prev, [key]: full }))
+          if (name === "WinnerAlreadyClaimed" || name === "CertificateAlreadyClaimed") {
+            setMintedWinnerIds((prev) => ({ ...prev, [key]: true }))
+          }
+          toast({
+            variant: "destructive",
+            title: "Mint gagal (pre-check)",
+            description: full,
+          })
           return
         }
       }
-      await writeWinnerAsync({
+
+      const hash = await writeWinnerAsync({
         address: competitionContractAddress,
         abi: CompetitionManagerABI as any,
         functionName: "safeMintCertificateParticipantWinner",
-        args: [BigInt(winnerId), signature as `0x${string}`, cid as string],
+        args: [onchainWinnerId, signature as `0x${string}`, cid as string],
+      })
+
+      if (publicClient && hash) {
+        await publicClient.waitForTransactionReceipt({ hash })
+      }
+
+      setMintedWinnerIds((prev) => ({ ...prev, [key]: true }))
+      toast({
+        title: "Certificate Minted!",
+        description: `Winner Certificate ${itemTitle ? `(${itemTitle}) ` : ""}successfully minted.`,
       })
     } catch (error: any) {
-      const raw = error?.cause?.message || error?.shortMessage || error?.message || "Failed to mint winner certificate."
+      const raw =
+        error?.cause?.message ||
+        error?.shortMessage ||
+        error?.message ||
+        "Failed to mint winner certificate."
       const name = decodeCertificateErrorName(error)
       const msg = friendlyCertificateError(name, raw)
       console.error("[mintWinner] revert", name, error)
       const full = `${name ? name + ": " : ""}${msg}`
-      setWinnerMintError(full)
-      toast({ variant: "destructive", title: "Failed to mint certificate", description: full })
+      setWinnerMintErrors((prev) => ({ ...prev, [key]: full }))
+      if (name === "WinnerAlreadyClaimed" || name === "CertificateAlreadyClaimed") {
+        setMintedWinnerIds((prev) => ({ ...prev, [key]: true }))
+      }
+      toast({
+        variant: "destructive",
+        title: "Failed to mint certificate",
+        description: full,
+      })
+    } finally {
+      setMintingWinnerId(null)
     }
   }
 
@@ -325,6 +400,7 @@ export function WorkspaceAnnouncements({
         description="Competition notifications, jury updates, and credential certificates."
       />
       <div className="grid gap-4 md:grid-cols-2">
+        {/* Participant Certificate Card */}
         <div className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5">
           <div className="flex items-center gap-2">
             <FileBadge size={23} className="text-slate-400" />
@@ -352,31 +428,172 @@ export function WorkspaceAnnouncements({
                 : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
             }`}
           >
-            {isMinted || isMintedBackend ? "Participant Certificate Minted" : isMinting ? "Minting Participant Certificate..." : "Mint Participant Certificate NFT"}
+            {isMinted || isMintedBackend
+              ? "Participant Certificate Minted"
+              : isMinting
+                ? "Minting Participant Certificate..."
+                : "Mint Participant Certificate NFT"}
           </button>
-          {participantMintError ? (<p role="alert" className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700">{participantMintError}</p>) : null}
-          {certificateCid ? (<p className="mt-3 text-[10px] leading-5 text-muted-foreground">Certificate CID: <span className="font-mono break-all">{certificateCid}</span></p>) : (<p className="mt-3 text-[10px] leading-5 text-muted-foreground">Available after judging and results are finalized.</p>)}
+          {participantMintError ? (
+            <p
+              role="alert"
+              className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
+            >
+              {participantMintError}
+            </p>
+          ) : null}
+          {certificateCid ? (
+            <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+              Certificate CID:{" "}
+              <span className="font-mono break-all">{certificateCid}</span>
+            </p>
+          ) : (
+            <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+              Available after judging and results are finalized.
+            </p>
+          )}
         </div>
-        <div className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5">
-          <div className="flex items-center gap-2">
-            <FileBadge size={23} className="text-slate-400" />
-            <h3 className="text-sm font-bold">Winner Certificate</h3>
-            <span className="ml-auto">
-              {isAvailable ? (<Badge tone="green"><CheckCircle2 size={10} />Available</Badge>) : (<Badge tone="neutral"><LockKeyhole size={10} />Locked</Badge>)}
-            </span>
+
+        {/* Winner Certificate Cards */}
+        {winnerList.length > 0 ? (
+          winnerList.map((winner, idx) => {
+            const targetWinnerId = winner.winner_id
+              ? String(winner.winner_id)
+              : winner.id
+                ? String(winner.id)
+                : String(idx + 1)
+            const title =
+              winner.category ||
+              winner.title ||
+              `Winner Certificate #${idx + 1}`
+            const winCid = winner.certificate_cid || certificateCid
+            const isWinnerMintingItem = mintingWinnerId === targetWinnerId
+            const isWinnerMintedItem = Boolean(mintedWinnerIds[targetWinnerId])
+            const itemError = winnerMintErrors[targetWinnerId]
+
+            return (
+              <div
+                key={winner.id || targetWinnerId || idx}
+                className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5"
+              >
+                <div className="flex items-center gap-2">
+                  <FileBadge size={23} className="text-slate-400" />
+                  <h3 className="text-sm font-bold truncate">
+                    Winner Certificate ({title})
+                  </h3>
+                  <span className="ml-auto shrink-0">
+                    {isAvailable ? (
+                      <Badge tone="green">
+                        <CheckCircle2 size={10} />
+                        Available
+                      </Badge>
+                    ) : (
+                      <Badge tone="neutral">
+                        <LockKeyhole size={10} />
+                        Locked
+                      </Badge>
+                    )}
+                  </span>
+                </div>
+                <button
+                  disabled={
+                    !isAvailable ||
+                    isWinnerMintingItem ||
+                    isWinnerMintedItem ||
+                    mintingWinnerId !== null
+                  }
+                  onClick={() =>
+                    handleMintWinnerCertificate(targetWinnerId, title)
+                  }
+                  className={`mt-5 rounded-lg px-3 py-3 text-xs ${
+                    isAvailable &&
+                    !isWinnerMintingItem &&
+                    !isWinnerMintedItem &&
+                    mintingWinnerId === null
+                      ? "bg-slate-900 text-white hover:bg-slate-800"
+                      : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
+                  }`}
+                >
+                  {isWinnerMintedItem
+                    ? `Winner Certificate (${title}) Minted`
+                    : isWinnerMintingItem
+                      ? `Minting Certificate (${title})...`
+                      : `Mint Winner Certificate (${title}) NFT`}
+                </button>
+                {itemError ? (
+                  <p
+                    role="alert"
+                    className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
+                  >
+                    {itemError}
+                  </p>
+                ) : null}
+                {winCid ? (
+                  <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+                    Certificate CID:{" "}
+                    <span className="font-mono break-all">{winCid}</span>
+                  </p>
+                ) : (
+                  <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+                    Available after final judging and prize settlement.
+                  </p>
+                )}
+              </div>
+            )
+          })
+        ) : (
+          <div className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5">
+            <div className="flex items-center gap-2">
+              <FileBadge size={23} className="text-slate-400" />
+              <h3 className="text-sm font-bold">Winner Certificate</h3>
+              <span className="ml-auto">
+                {isAvailable ? (
+                  <Badge tone="green">
+                    <CheckCircle2 size={10} />
+                    Available
+                  </Badge>
+                ) : (
+                  <Badge tone="neutral">
+                    <LockKeyhole size={10} />
+                    Locked
+                  </Badge>
+                )}
+              </span>
+            </div>
+            <button
+              disabled={
+                !isAvailable ||
+                mintingWinnerId !== null ||
+                Boolean(mintedWinnerIds["default"])
+              }
+              onClick={() => handleMintWinnerCertificate(null, "")}
+              className={`mt-5 rounded-lg px-3 py-3 text-xs ${
+                isAvailable &&
+                mintingWinnerId === null &&
+                !mintedWinnerIds["default"]
+                  ? "bg-slate-900 text-white hover:bg-slate-800"
+                  : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
+              }`}
+            >
+              {mintedWinnerIds["default"]
+                ? "Winner Certificate Minted"
+                : mintingWinnerId === "default"
+                  ? "Minting Winner Certificate..."
+                  : "Mint Winner Certificate NFT"}
+            </button>
+            {winnerMintErrors["default"] ? (
+              <p
+                role="alert"
+                className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
+              >
+                {winnerMintErrors["default"]}
+              </p>
+            ) : null}
+            <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+              Available after final judging and prize settlement.
+            </p>
           </div>
-          <button
-            disabled={!isAvailable || isWinnerMinting || isWinnerMinted}
-            onClick={handleMintWinnerCertificate}
-            className={`mt-5 rounded-lg px-3 py-3 text-xs ${
-              isAvailable && !isWinnerMinting && !isWinnerMinted ? "bg-slate-900 text-white hover:bg-slate-800" : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
-            }`}
-          >
-            {isWinnerMinted ? "Winner Certificate Minted" : isWinnerMinting ? "Minting Winner Certificate..." : "Mint Winner Certificate NFT"}
-          </button>
-          {winnerMintError ? (<p role="alert" className="mt-3 text-[10px] leading-5 text-red-600">{winnerMintError}</p>) : null}
-          <p className="mt-3 text-[10px] leading-5 text-muted-foreground">Available after final judging and prize settlement.</p>
-        </div>
+        )}
       </div>
     </Panel>
   )

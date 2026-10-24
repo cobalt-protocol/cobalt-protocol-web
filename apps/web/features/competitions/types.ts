@@ -10,6 +10,9 @@ export type CompetitionStatus =
 export type CompetitionIcon = "bot" | "landmark" | "leaf" | "shield" | "palette"
 export interface Prize {
   id: string
+  winner_id?: string | number | null
+  category?: string | null
+  certificate_cid?: string | null
   title: string
   amount: number
   rawAmount: string
@@ -58,6 +61,7 @@ export interface Competition {
   maxTeamSize: number
   currency: string
   prizes: readonly Prize[]
+  prize_winners?: readonly any[]
   timeline: readonly TimelineStage[]
   judgingCriteria: readonly JudgingCriterion[]
   rules: readonly string[]

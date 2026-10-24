@@ -218,7 +218,7 @@ export async function fetchWinnerCertificateSignature(
   competitionIdOrWinnerId?: string | null,
   winnerIdOrToken?: string | null,
   tokenMaybe?: string | null,
-): Promise<{ data?: { signature?: string | null; winner_id?: string | null; uri?: string | null }; message?: string }> {
+): Promise<{ data?: { signature?: string | null; winner_id?: string | null; uri?: string | null; cid?: string | null; certificate_cid?: string | null }; message?: string }> {
   let chainId: number
   let competitionId: string
   let winnerId: string | null | undefined
@@ -246,7 +246,7 @@ export async function fetchWinnerCertificateSignature(
   const path = winnerId
     ? `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner/${encodeURIComponent(winnerId)}`
     : `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner`
-  const response = await fetch(path, {
+  let response = await fetch(path, {
     method: "GET",
     headers: {
       Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
@@ -254,6 +254,24 @@ export async function fetchWinnerCertificateSignature(
     },
     cache: "no-store",
   })
+  if (response.status === 404) {
+    const fallbackPath = winnerId
+      ? `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner/${encodeURIComponent(winnerId)}`
+      : `${API_BASE_URL}/competitions/${encodeURIComponent(competitionId)}/signature-certificate-winner`
+    try {
+      const fbRes = await fetch(fallbackPath, {
+        method: "GET",
+        headers: {
+          Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      })
+      if (fbRes.ok) {
+        response = fbRes
+      }
+    } catch {}
+  }
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
     throw new Error(payload?.message || `Failed to fetch winner certificate signature (${response.status})`)
@@ -593,6 +611,9 @@ export function mapApiCompetitionToCompetition(
             w.category || `${placeNum}${getOrdinalSuffix(placeNum)} Place`
           return {
             id: w.id || `prize-${i}`,
+            winner_id: w.winner_id ? String(w.winner_id) : String(i + 1),
+            category: w.category || titleStr,
+            certificate_cid: w.certificate_cid ?? null,
             title: titleStr,
             amount: amountNum,
             rawAmount: String(rawAmount),
@@ -688,6 +709,7 @@ export function mapApiCompetitionToCompetition(
     maxTeamSize: computedMaxTeamSize,
     currency: getTokenSymbol(prizeCurrencyTokenAddress),
     prizes,
+    prize_winners: apiComp.prize_winners || [],
     timeline: [
       {
         id: "registration",
@@ -1962,12 +1984,12 @@ export function formatTokenPrize(
 
 export async function fetchApiCompetitionById(
   chainIdOrId: number | string,
-  idOrToken?: string | Record<string, any>,
-  tokenMaybe?: string | Record<string, any>
+  idOrToken?: string | Record<string, any> | null,
+  tokenMaybe?: string | Record<string, any> | null
 ): Promise<ApiCompetition | null> {
   let chainId: number
   let id: string
-  let token: string | Record<string, any> | undefined
+  let token: string | Record<string, any> | null | undefined
   if (typeof chainIdOrId === "number") { chainId = resolveChainId(chainIdOrId); id = idOrToken as string; token = tokenMaybe; } else { chainId = DEFAULT_CHAIN_ID; id = chainIdOrId as string; token = idOrToken as any; }
   try {
     const headers: Record<string, string> = {
@@ -2666,7 +2688,7 @@ export async function submitTeamProjectSubmissionApi(
   teamIdOrPayload?: string | CreateSubmissionPayload,
   payloadOrToken?: CreateSubmissionPayload | string | null,
   tokenMaybe?: string | null
-): Promise<{ success: boolean; data?: any; error?: string }> {
+): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
   let chainId: number
   let teamId: string
   let payload: CreateSubmissionPayload

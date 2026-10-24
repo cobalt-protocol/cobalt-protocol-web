@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
+import { BaseError, decodeErrorResult } from 'viem';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
     fetchApiMe,
@@ -363,7 +364,7 @@ export default function DetermineWinner() {
                         : undefined) ||
                         (pWinner?.participant
                         ? allTeams.find((t) =>
-                            t.user?.wallet_address?.toLowerCase() === pWinner.participant.toLowerCase() ||
+                            (t as any).user?.wallet_address?.toLowerCase() === pWinner.participant.toLowerCase() ||
                             t.team_roles?.some((r: any) => r.user?.wallet_address?.toLowerCase() === pWinner.participant.toLowerCase())
                           )
                         : undefined) ||
