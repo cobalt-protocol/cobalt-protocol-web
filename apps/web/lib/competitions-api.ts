@@ -38,6 +38,18 @@ export interface ApiPrizeDeposit {
   deleted_at?: string | null
 }
 
+export interface ApiCompetitionOrganization {
+  id: string
+  tx_hash?: string | null
+  avatar_url?: string | null
+  name?: string | null
+  description?: string | null
+  user_id?: string
+  created_at?: string
+  updated_at?: string | null
+  deleted_at?: string | null
+}
+
 export interface ApiCompetition {
   id: string
   competition_id?: string | null
@@ -68,6 +80,7 @@ export interface ApiCompetition {
   total_teams?: number | null
   total_participant?: number | null
   teams?: any[]
+  organization?: ApiCompetitionOrganization | null
 }
 
 export interface ApiCompetitionsResponse {
@@ -639,8 +652,9 @@ export function mapApiCompetitionToCompetition(
     txHash: formattedTxHash,
     tx_hash: formattedTxHash,
     title: apiComp.name || "Untitled Competition",
-    organizer: "Cobalt Protocol",
+    organizer: apiComp.organization?.name || "Cobalt Protocol",
     organizerDescription:
+      apiComp.organization?.description ||
       "Decentralized competition organizer on Cobalt Protocol.",
     category,
     tag: apiComp.category || category,
