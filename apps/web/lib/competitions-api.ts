@@ -856,6 +856,9 @@ export function mapApiCompetitionToCompetition(
     pirze_certificate_claim: apiComp.pirze_certificate_claim ?? null,
     fee: apiComp.fee ?? null,
     fee_token_address: apiComp.fee_token_address ?? null,
+    indexer_state: (apiComp as any).indexer_state ?? null,
+    contract_address: (apiComp as any).indexer_state?.contract_address ?? null,
+    contractAddress: (apiComp as any).indexer_state?.contract_address ?? null,
     prizeDeposits,
     prizeDepositsTotalRaw,
   }

@@ -44,21 +44,24 @@ interface ExecutePaidTeamParams {
   cid: string
   signature: `0x${string}`
   onchainCompetitionIdOverride?: string | null
+  contractAddressOverride?: `0x${string}` | null
   effectiveAddress?: string
   publicClient: any
   writeContractAsync: any
 }
 function parseContractError(err: any): string {
+  console.error("DEBUG parseContractError raw:", err)
   const msg = String(err?.shortMessage || err?.message || err?.cause?.message || err?.cause || err || "")
   const data = String(err?.data || err?.cause?.data || "")
-  if (msg.includes("CompetitionDoesNotExist")) return "Competition does not exist on-chain."
-  if (msg.includes("InvalidSignature")) return "Invalid signature for team payment."
+  if (msg.includes("CompetitionDoesNotExist") || data.includes("8fe76d05")) return "Competition does not exist on-chain."
+  if (msg.includes("InvalidSignature") || data.includes("8baa579f")) return "Invalid signature for team payment. Signature tidak valid untuk kontrak ini."
+  if (msg.includes("SignatureAlreadyUsed")) return "Signature untuk pendaftaran tim ini sudah pernah digunakan (anti-replay)."
   if (msg.includes("IncorrectFeeAmount")) return "Incorrect team registration fee amount."
   if (msg.includes("InvalidRecipient")) return "Invalid recipient address for competition fee."
   if (msg.includes("AmountZero")) return "Registration fee amount cannot be zero."
   if (msg.includes("NativeFromMismatch")) return "Payer address does not match the connected wallet."
-  if (msg.includes("IncorrectNativeAmount")) return "Incorrect native token payment amount sent."
-  if (msg.includes("TransferFailed")) return "Token transfer failed. Check your wallet balance or token allowance."
+  if (msg.includes("IncorrectNativeAmount") || data.includes("32a1ff6f")) return "Incorrect native token payment amount sent. Jumlah BOT yang dikirim tidak sesuai fee kompetisi."
+  if (msg.includes("TransferFailed") || data.includes("90b8ec18")) return "Token transfer failed. Check your wallet balance or token allowance."
   if (msg.includes("FeeOptionNotFound")) return "Fee option not found for this competition."
   if (msg.includes("PriceFeeNotFound")) return "Price fee not found."
   if (msg.includes("ERC20InsufficientBalance") || data.includes("e450d38c") || msg.includes("e450d38c")) {
@@ -70,18 +73,92 @@ function parseContractError(err: any): string {
   if (msg.includes("User rejected") || msg.includes("User denied") || err?.code === 4001) {
     return "Transaction was cancelled by user."
   }
+  if (err?.shortMessage && !err.shortMessage.toLowerCase().includes("reverted on-chain")) {
+    return err.shortMessage
+  }
   if (msg.includes("reverted on-chain") || msg.includes("revert")) {
-    return "Transaksi gagal di blockchain. Pastikan saldo token/koin Anda mencukupi untuk biaya gas dan pendaftaran."
+    return `Transaksi gagal di blockchain: ${err?.shortMessage || err?.message || "Reverted on-chain"}`
   }
   return err?.shortMessage || err?.message || "Transaction failed."
 }
 
+
+const legacyGetCompetitionAbi = [
+  {
+    type: "function",
+    name: "getCompetition",
+    stateMutability: "view",
+    inputs: [{ name: "_competitionId", type: "uint256" }],
+    outputs: [
+      {
+        name: "",
+        type: "tuple",
+        components: [
+          { name: "id", type: "uint256" },
+          { name: "cid", type: "string" },
+          { name: "formation", type: "string" },
+          { name: "organization", type: "address" },
+          { name: "prizeCertificateClaim", type: "uint256" },
+          { name: "certificateCID", type: "string" },
+          {
+            name: "payment",
+            type: "tuple",
+            components: [
+              { name: "tokenAddress", type: "address" },
+              { name: "fee", type: "uint256" },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+] as const
+
+async function safeReadOnchainCompetitionPayment(
+  publicClient: any,
+  contractAddress: `0x${string}`,
+  onchainId: bigint
+): Promise<{ fee?: bigint; tokenAddress?: `0x${string}` } | null> {
+  if (!publicClient || !contractAddress) return null
+  let contractComp: any = null
+  try {
+    contractComp = await publicClient.readContract({
+      address: contractAddress,
+      abi: CompetitionManagerABI as any,
+      functionName: "getCompetition",
+      args: [onchainId],
+    })
+  } catch (err: any) {
+    try {
+      contractComp = await publicClient.readContract({
+        address: contractAddress,
+        abi: legacyGetCompetitionAbi,
+        functionName: "getCompetition",
+        args: [onchainId],
+      })
+    } catch {
+      return null
+    }
+  }
+
+  const payment = contractComp?.payment ?? contractComp?.[4] ?? contractComp?.[6]
+  if (!payment) return null
+
+  const tFee = typeof payment === "object" && payment !== null ? (payment.fee ?? payment[1]) : null
+  const tToken = typeof payment === "object" && payment !== null ? (payment.tokenAddress ?? payment[0]) : null
+
+  return {
+    fee: tFee !== undefined && tFee !== null ? BigInt(tFee.toString()) : undefined,
+    tokenAddress: tToken && isAddress(tToken) ? (getAddress(tToken) as `0x${string}`) : undefined,
+  }
+}
 
 async function executePaidTeamCreation({
   competition,
   cid,
   signature,
   onchainCompetitionIdOverride,
+  contractAddressOverride,
   effectiveAddress,
   publicClient,
   writeContractAsync,
@@ -93,7 +170,15 @@ async function executePaidTeamCreation({
   if (!signature) return { error: "Missing signature for team payment" }
 
   const onchainId = BigInt(resolvedOnchainId)
-  const competitionContractAddress = getCompetitionContractAddress()
+  const competitionContractAddress =
+    contractAddressOverride ||
+    ((competition as any)?.contract_address && isAddress((competition as any).contract_address)
+      ? getAddress((competition as any).contract_address)
+      : null) ||
+    ((competition as any)?.indexer_state?.contract_address && isAddress((competition as any).indexer_state.contract_address)
+      ? getAddress((competition as any).indexer_state.contract_address)
+      : null) ||
+    getCompetitionContractAddress()
 
   if (!publicClient) return { error: "Public client not available" }
 
@@ -102,33 +187,25 @@ async function executePaidTeamCreation({
   let feeAmount = 0n
 
   // Attempt to read payment details directly from smart contract to ensure 1:1 sync
-  try {
-    const contractComp: any = await publicClient.readContract({
-      address: competitionContractAddress,
-      abi: CompetitionManagerABI as any,
-      functionName: "getCompetition",
-      args: [onchainId],
-    })
-    const payment = contractComp?.payment ?? contractComp?.[6]
-    if (payment) {
-      const tFee = typeof payment === "object" && payment !== null ? (payment.fee ?? payment[1]) : null
-      const tToken = typeof payment === "object" && payment !== null ? (payment.tokenAddress ?? payment[0]) : null
-      if (tFee !== undefined && tFee !== null) {
-        feeAmount = BigInt(tFee.toString())
-      }
-      if (tToken && isAddress(tToken)) {
-        feeTokenAddress = getAddress(tToken) as `0x${string}`
-      }
+  const onchainPayment = await safeReadOnchainCompetitionPayment(
+    publicClient,
+    competitionContractAddress,
+    onchainId
+  )
+
+  if (onchainPayment?.fee !== undefined) {
+    feeAmount = onchainPayment.fee
+  } else if (competition.fee) {
+    try {
+      feeAmount = BigInt(competition.fee.toString())
+    } catch {
+      feeAmount = 0n
     }
-  } catch (err) {
-    console.warn("Failed to read onchain competition payment, falling back to competition object:", err)
-    if (competition.fee) {
-      try {
-        feeAmount = BigInt(competition.fee.toString())
-      } catch {
-        feeAmount = 0n
-      }
-    }
+  }
+
+  if (onchainPayment?.tokenAddress) {
+    feeTokenAddress = onchainPayment.tokenAddress
+  } else {
     const rawToken = competition.fee_token_address || ZERO_ADDRESS
     if (rawToken && isAddress(rawToken)) {
       try {
@@ -221,6 +298,25 @@ async function executePaidTeamCreation({
     } catch (err: any) {
       return { error: `Token approval failed: ${parseContractError(err)}` }
     }
+  }
+
+  // Pre-flight simulation to catch exact revert reason directly from node
+  try {
+    await publicClient.simulateContract({
+      account: getAddress(effectiveAddress),
+      address: competitionContractAddress,
+      abi: CompetitionManagerABI as any,
+      functionName: "paymentCreateTeam",
+      args: [
+        onchainId,
+        cid,
+        signature,
+      ],
+      value: isNative ? feeAmount : 0n,
+    })
+  } catch (simErr: any) {
+    console.error("Simulation failed:", simErr)
+    return { error: parseContractError(simErr) }
   }
 
   // Execute paymentCreateTeam on CompetitionManager with (_competitionId, cid, _signature)
@@ -845,14 +941,12 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     const compIdOrSlug = dialog.competition.id || dialog.competition.onchainCompetitionId || dialog.competition.slug
     if (!compIdOrSlug) return "Invalid competition identifier."
 
-    const parsedSkills = input.requirements
-      ? input.requirements
-        .split(/[,;\n]/)
-        .map((s) => s.trim())
-        .filter(Boolean)
-      : []
     const skillsList = Array.from(
-      new Set([...(input.skills || []), ...parsedSkills])
+      new Set(
+        (input.skills || [])
+          .map((s) => (typeof s === "string" ? s.trim() : ""))
+          .filter(Boolean)
+      )
     )
 
     // Pin team metadata to IPFS first so we have `cid` for createByChainAndCompetition & paymentCreateTeam
@@ -883,6 +977,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     // If 403 Forbidden ("silahkan update profile"), open "Set Up Your Profile" dialog.
     let teamPaymentSignature: `0x${string}` | null = null
     let onchainCompIdFromSig: string | null = null
+    let contractAddressFromSig: `0x${string}` | null = null
     try {
       const sigRes = await createSignatureTeamPayment(
         chainId,
@@ -893,6 +988,9 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
       teamPaymentSignature = (sigRes?.data?.signature as `0x${string}`) || null
       if (sigRes?.data?.competition_onchain_id) {
         onchainCompIdFromSig = String(sigRes.data.competition_onchain_id)
+      }
+      if (sigRes?.data?.contract_address && isAddress(sigRes.data.contract_address)) {
+        contractAddressFromSig = getAddress(sigRes.data.contract_address) as `0x${string}`
       }
     } catch (sigErr: any) {
       const errStatus = sigErr?.status ?? sigErr?.payload?.statusCode
@@ -928,24 +1026,24 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
 
     const effectiveOnchainCompId = onchainCompIdFromSig || dialog.competition.onchainCompetitionId
     if (effectiveOnchainCompId && publicClient) {
-      try {
-        const competitionContractAddress = getCompetitionContractAddress()
+      const competitionContractAddress =
+        contractAddressFromSig ||
+        ((dialog.competition as any)?.contract_address && isAddress((dialog.competition as any).contract_address)
+          ? getAddress((dialog.competition as any).contract_address)
+          : null) ||
+        ((dialog.competition as any)?.indexer_state?.contract_address && isAddress((dialog.competition as any).indexer_state.contract_address)
+          ? getAddress((dialog.competition as any).indexer_state.contract_address)
+          : null) ||
+        getCompetitionContractAddress()
 
-        const contractComp: any = await publicClient.readContract({
-          address: competitionContractAddress,
-          abi: CompetitionManagerABI as any,
-          functionName: "getCompetition",
-          args: [BigInt(effectiveOnchainCompId)],
-        })
-        const payment = contractComp?.payment ?? contractComp?.[6]
-        if (payment) {
-          const tFee = typeof payment === "object" && payment !== null ? (payment.fee ?? payment[1]) : null
-          if (tFee !== undefined && tFee !== null) {
-            isFeeEnabled = BigInt(tFee.toString()) > 0n
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to check onchain fee in submitCreateTeam:", err)
+      const onchainPayment = await safeReadOnchainCompetitionPayment(
+        publicClient,
+        competitionContractAddress,
+        BigInt(effectiveOnchainCompId)
+      )
+
+      if (onchainPayment?.fee !== undefined) {
+        isFeeEnabled = onchainPayment.fee > 0n
       }
     }
 
@@ -955,6 +1053,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         cid,
         signature: teamPaymentSignature,
         onchainCompetitionIdOverride: effectiveOnchainCompId,
+        contractAddressOverride: contractAddressFromSig,
         effectiveAddress,
         publicClient,
         writeContractAsync,
