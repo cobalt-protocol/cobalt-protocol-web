@@ -489,8 +489,18 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
           if (u.wallet_address) setAuthenticatedAddress(u.wallet_address)
         }
       })
-      .catch((err) => {
+      .catch(async (err) => {
         console.warn("Could not fetch user profile from API:", err)
+        if (err?.message?.includes("(401)") || String(err).includes("401")) {
+          if (typeof window !== "undefined") {
+            window.localStorage.removeItem("cobalt:access_token")
+          }
+          setSessionToken(null)
+          const currentAddr = address ? String(address) : authenticatedAddress
+          if (currentAddr) {
+            await startAuthFlow(currentAddr)
+          }
+        }
       })
   }, [sessionToken])
 
@@ -953,7 +963,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
     const metadata = {
       name: input.name.trim(),
       visibility: input.visibility === "public",
-      description: input.requirements.trim(),
+      requirement: input.requirements.trim(),
       skills_team: skillsList,
     }
     const formData = new FormData()
@@ -1076,7 +1086,7 @@ export function SiteActionsProvider({ children }: { children: ReactNode }) {
         {
           name: input.name.trim(),
           visibility: input.visibility === "public",
-          description: input.requirements.trim(),
+          requirement: input.requirements.trim(),
           skills_team: skillsList,
         },
         effectiveToken

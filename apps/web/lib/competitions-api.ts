@@ -94,6 +94,185 @@ const API_BASE_URL = rawApiUrl.endsWith("/api/v1")
   ? rawApiUrl
   : `${rawApiUrl.replace(/\/$/, "")}/api/v1`
 
+const rawAiUrl = process.env.NEXT_PUBLIC_AI_API_URL || "http://localhost:8001/api"
+const AI_API_BASE_URL = rawAiUrl.endsWith("/api")
+  ? rawAiUrl.replace(/\/$/, "")
+  : `${rawAiUrl.replace(/\/$/, "")}/api`
+
+export interface AiTeamItem {
+  // Fields from cobalt-protocol-ai app/schemas/recomendation_team.py (TeamItem)
+  team_id?: string
+  team_name?: string
+  visibility?: boolean
+  team_description?: string | null
+  tx_hash?: string | null
+  team_created_at?: string | null
+  skills_team?: Array<{ id?: string; name?: string; team_id?: string }> | null
+  deleted_at?: string | null
+  persentage?: string | null
+
+  // Competition fields
+  competition_id?: string | null
+  category?: string | null
+  requirement?: string | null
+  formation?: string | null
+  format?: string | null
+  registration_window?: string | null
+  competition_window?: string | null
+  submission_deadline?: string | null
+  judging_review?: string | null
+  result_announcement?: string | null
+  pirze_certificate_claim?: string | null
+  certificate_cid?: string | null
+  guidebook_cid?: string | null
+  fee?: number | null
+  fee_token_address?: string | null
+  price_competition_id?: string | null
+  indexer_state_id?: string | null
+
+  // User / fallback fields
+  id?: string
+  name?: string
+  description?: string | null
+  created_at?: string | null
+  updated_at?: string | null
+  user_id?: string | null
+  wallet_address?: string | null
+  username?: string | null
+  email?: string | null
+  location?: string | null
+  institution?: string | null
+}
+
+export interface AiTeamRecommendationResponse {
+  data: AiTeamItem[]
+  message: string
+  errors?: any
+}
+
+export async function fetchAiRecommendedTeams(
+  competitionIdOrToken?: string | null,
+  tokenMaybe?: string | null
+): Promise<AiTeamItem[]> {
+  try {
+    let competitionId: string | null = null
+    let token: string | null = null
+
+    // Support both signatures:
+    // 1. fetchAiRecommendedTeams(competitionId, token)
+    // 2. fetchAiRecommendedTeams(token) (legacy fallback)
+    if (tokenMaybe !== undefined) {
+      competitionId = competitionIdOrToken || null
+      token = tokenMaybe
+    } else if (
+      competitionIdOrToken &&
+      (competitionIdOrToken.startsWith("ey") ||
+        competitionIdOrToken.startsWith("Bearer "))
+    ) {
+      token = competitionIdOrToken
+    } else {
+      competitionId = competitionIdOrToken || null
+      token = null
+    }
+
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (!authToken) return []
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: authToken.startsWith("Bearer ")
+        ? authToken
+        : `Bearer ${authToken}`,
+    }
+
+    const endpoint = competitionId
+      ? `${AI_API_BASE_URL}/recommendation-team/${encodeURIComponent(competitionId)}`
+      : `${AI_API_BASE_URL}/recommendation-team`
+
+    let res = await fetch(endpoint, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    // Fallback URL if /api/recommendation-team returned 404 (e.g. without /api prefix)
+    if (!res.ok && res.status === 404) {
+      const fallbackEndpoint = competitionId
+        ? `${AI_API_BASE_URL.replace(/\/api$/, "")}/recommendation-team/${encodeURIComponent(competitionId)}`
+        : `${AI_API_BASE_URL.replace(/\/api$/, "")}/recommendation-team`
+      res = await fetch(fallbackEndpoint, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      })
+    }
+
+    if (!res.ok) {
+      if (res.status === 404) return []
+      console.warn("fetchAiRecommendedTeams HTTP error:", res.status)
+      return []
+    }
+
+    const json: AiTeamRecommendationResponse = await res.json()
+    if (!Array.isArray(json?.data)) return []
+    return json.data.filter((item): item is AiTeamItem => Boolean(item && (item.team_id || item.id)))
+  } catch (err) {
+    console.warn("fetchAiRecommendedTeams error:", err)
+    return []
+  }
+}
+
+/**
+ * Fetch a single AI recommended team by competition and team ID.
+ * Returns the AiTeamItem or null if not found.
+ */
+export async function fetchAiRecommendedTeamById(
+  competitionId: string,
+  teamId: string,
+  tokenMaybe?: string | null
+): Promise<AiTeamItem | null> {
+  try {
+    const token = tokenMaybe ?? getStoredToken()
+    if (!token) return null
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Authorization: token.startsWith("Bearer ") ? token : `Bearer ${token}`,
+    }
+
+    const endpoint = `${AI_API_BASE_URL}/recommendation-team/${encodeURIComponent(competitionId)}/${encodeURIComponent(teamId)}`
+    let res = await fetch(endpoint, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+
+    // Fallback handling similar to fetchAiRecommendedTeams
+    if (!res.ok && res.status === 404) {
+      const fallbackEndpoint = `${AI_API_BASE_URL.replace(/\/api$/, "")}/recommendation-team/${encodeURIComponent(competitionId)}/${encodeURIComponent(teamId)}`
+      res = await fetch(fallbackEndpoint, {
+        method: "GET",
+        headers,
+        cache: "no-store",
+      })
+    }
+
+    if (!res.ok) {
+      if (res.status === 404) return null
+      console.warn("fetchAiRecommendedTeamById HTTP error:", res.status)
+      return null
+    }
+
+    const json: { data: AiTeamItem; message: string; errors?: any } = await res.json()
+    return json?.data ?? null
+  } catch (err) {
+    console.warn("fetchAiRecommendedTeamById error:", err)
+    return null
+  }
+}
+
 export const DEFAULT_CHAIN_ID = 968
 export function getDefaultChainId(): number { return DEFAULT_CHAIN_ID }
 export function resolveChainId(chainId?: number | null): number {
@@ -141,11 +320,11 @@ export async function fetchMyParticipantMinted(
         Authorization: authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`,
       },
     })
-    
+
     if (response.status === 404) {
-       return { data: null }
+      return { data: null }
     }
-    
+
     const payload = await response.json()
     if (!response.ok) {
       throw new Error(payload?.message || `Failed to fetch participant minted certificates (${response.status})`)
@@ -222,7 +401,7 @@ export async function fetchMyWinnerMinted(
     if (!response.ok) {
       throw new Error(
         payload?.message ||
-          `Failed to fetch winner minted certificates (${response.status})`,
+        `Failed to fetch winner minted certificates (${response.status})`,
       )
     }
 
@@ -346,7 +525,7 @@ export async function fetchWinnerCertificateSignature(
       if (fbRes.ok) {
         response = fbRes
       }
-    } catch {}
+    } catch { }
   }
   const payload = await response.json().catch(() => null)
   if (!response.ok) {
@@ -670,9 +849,9 @@ export function mapApiCompetitionToCompetition(
 
   const generatedSlug = apiComp.name
     ? apiComp.name
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, "-")
-        .replace(/^-|-$/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
     : apiComp.id
   const slug = generatedSlug || apiComp.id
   const ipfsGatewayUrl = (
@@ -688,32 +867,32 @@ export function mapApiCompetitionToCompetition(
   const prizes =
     apiComp.prize_winners && apiComp.prize_winners.length > 0
       ? apiComp.prize_winners.map((w, i) => {
-          const placeNum = w.rank || w.place || i + 1
-          const rawAmount = w.prize_amount ?? w.amount ?? 0
-          const amountNum = parse18DecimalAmount(rawAmount, 18)
-          const titleStr =
-            w.category || `${placeNum}${getOrdinalSuffix(placeNum)} Place`
-          return {
-            id: w.id || `prize-${i}`,
-            winner_id: w.winner_id ? String(w.winner_id) : String(i + 1),
-            category: w.category || titleStr,
-            certificate_cid: w.certificate_cid ?? null,
-            title: titleStr,
-            amount: amountNum,
-            rawAmount: String(rawAmount),
-            description: w.tx_hash
-              ? `Reward (${w.tx_hash.slice(0, 10)}...)`
-              : "Prize reward",
-          }
-        })
+        const placeNum = w.rank || w.place || i + 1
+        const rawAmount = w.prize_amount ?? w.amount ?? 0
+        const amountNum = parse18DecimalAmount(rawAmount, 18)
+        const titleStr =
+          w.category || `${placeNum}${getOrdinalSuffix(placeNum)} Place`
+        return {
+          id: w.id || `prize-${i}`,
+          winner_id: w.winner_id ? String(w.winner_id) : String(i + 1),
+          category: w.category || titleStr,
+          certificate_cid: w.certificate_cid ?? null,
+          title: titleStr,
+          amount: amountNum,
+          rawAmount: String(rawAmount),
+          description: w.tx_hash
+            ? `Reward (${w.tx_hash.slice(0, 10)}...)`
+            : "Prize reward",
+        }
+      })
       : []
 
   const fmtDate = (s?: string) =>
     s
       ? new Date(s).toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-        })
+        month: "short",
+        day: "numeric",
+      })
       : "TBA"
 
   const formattedTxHash = apiComp.tx_hash || null
@@ -889,7 +1068,8 @@ export function toIpfsGatewayUrl(cidOrUrl?: string | null): string | null {
 export interface CreateTeamPayload {
   name?: string
   visibility: boolean
-  description: string
+  requirement?: string
+  description?: string
   skills_team?: string[]
 }
 
@@ -937,6 +1117,13 @@ export async function createCompetitionTeam(
     throw new Error("You must be authenticated to create a team.")
   }
 
+  const requestPayload = {
+    name: payload.name,
+    visibility: payload.visibility,
+    requirement: payload.requirement ?? payload.description ?? "",
+    skills_team: payload.skills_team,
+  }
+
   const response = await fetch(
     `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(competitionIdOrSlug)}/join-teams`,
     {
@@ -945,7 +1132,7 @@ export async function createCompetitionTeam(
         "Content-Type": "application/json",
         Authorization: `Bearer ${authToken}`,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(requestPayload),
     }
   )
 
@@ -1462,7 +1649,7 @@ export async function fetchTeamDetail(
           const cj = await compFallback.json()
           if (cj?.data) return { competition: cj.data, team_roles: [], team_codes: [] } as any
         }
-      } catch {}
+      } catch { }
       return null
     }
 
@@ -1515,7 +1702,7 @@ export async function fetchTeamDetail(
             }
           }
         }
-      } catch {}
+      } catch { }
     }
     return teamData
   } catch {
@@ -1603,7 +1790,7 @@ export async function fetchTeamCompetitionDetailResult(
           teamData?.competition?.competition_id ||
           null
       }
-    } catch {}
+    } catch { }
     if (!competitionIdForFetch) {
       try {
         const listRes = await fetch(`${API_BASE_URL}/chains/${chainId}/teams`, {
@@ -1624,7 +1811,7 @@ export async function fetchTeamCompetitionDetailResult(
               found.competition_id || found.competition?.id || null
           }
         }
-      } catch {}
+      } catch { }
     }
     if (!competitionIdForFetch) competitionIdForFetch = teamId
 
@@ -2280,35 +2467,46 @@ export interface ApiUserDashboardData {
 }
 
 export async function fetchUserDashboard(
-  token?: string | null
+  token?: string | null,
+  chainId?: number
 ): Promise<ApiUserDashboardData | null> {
-  // Hard guard: /dashboard must NEVER hit legacy endpoint — uses GET /chains/:chainId/teams
-  if (
-    typeof window !== "undefined" &&
-    window.location.pathname.startsWith("/dashboard")
-  )
-    return null
   try {
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
+    const resolvedChainId = resolveChainId(chainId)
+    const teamsResult = await fetchMyTeamsResult(resolvedChainId, token)
+    const teams = teamsResult.data || []
+
+    const memberships: ApiUserDashboardMembership[] = teams.map((team: any) => ({
+      teamId: team.id,
+      teamName: team.name,
+      role: team.user_id ? "lead" : "member",
+      visibility: team.visibility ? "public" : "private",
+      memberCount: team.team_roles?.length || 1,
+      competition: team.competition ? {
+        id: team.competition.id,
+        slug: team.competition.id,
+        title: team.competition.name,
+        category: team.competition.category || "",
+        registrationEndsAt: team.competition.registration_ends_at || "",
+        submissionDeadline: team.competition.submission_deadline || "",
+      } : {
+        id: "",
+        slug: "",
+        title: "",
+        category: "",
+        registrationEndsAt: "",
+        submissionDeadline: "",
+      },
+    }))
+
+    return {
+      memberships,
+      pendingRequests: [],
     }
-    const authToken = typeof token === "string" ? token : getStoredToken()
-    if (!authToken) return null
-    headers["Authorization"] = authToken.startsWith("Bearer ")
-      ? authToken
-      : `Bearer ${authToken}`
-
-    const res = await fetch(`${API_BASE_URL}/users/me/dashboard`, {
-      method: "GET",
-      headers,
-      cache: "no-store",
-    })
-
-    if (!res.ok) return null
-    const json = await res.json()
-    return json.data || null
   } catch {
-    return null
+    return {
+      memberships: [],
+      pendingRequests: [],
+    }
   }
 }
 
@@ -2354,9 +2552,12 @@ export async function fetchTeamsByCompetitionId(
   idMaybe?: string,
   token?: string | null | boolean
 ): Promise<ApiTeam[]> {
-  let chainId: number
   let id: string
-  if (typeof chainIdOrId === "number") { chainId = resolveChainId(chainIdOrId); id = idMaybe as string; } else { chainId = DEFAULT_CHAIN_ID; id = chainIdOrId as string; }
+  if (typeof chainIdOrId === "number") {
+    id = idMaybe as string
+  } else {
+    id = chainIdOrId as string
+  }
   try {
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -2367,12 +2568,9 @@ export async function fetchTeamsByCompetitionId(
       headers["Authorization"] = authToken.startsWith("Bearer ") ? authToken : `Bearer ${authToken}`
     }
 
-    // FIX: sebelumnya nge-hit api/v1/chains/<chain_id>/teams/competition/<competition_id> (404/legacy)
-    // Sekarang pakai api/v1/chains/:chain_id/competitions/:competition_id/join-teams
-    // Endpoint protected AuthSessionGuard, filter visibility=true, chain_id via indexer_state,
-    // skip team yang sudah ada di request_join / team_role untuk user login.
+    // Call GET /api/v1/teams/competition/:competition_id
     const res = await fetch(
-      `${API_BASE_URL}/chains/${chainId}/competitions/${encodeURIComponent(id)}/join-teams`,
+      `${API_BASE_URL}/teams/competition/${encodeURIComponent(id)}`,
       {
         method: "GET",
         headers,
@@ -2384,8 +2582,14 @@ export async function fetchTeamsByCompetitionId(
       return []
     }
 
-    const json: ApiTeamsResponse = await res.json()
-    return (json.data as ApiTeam[] | null) || []
+    const json = await res.json()
+    if (Array.isArray(json?.data)) {
+      return json.data as ApiTeam[]
+    }
+    if (Array.isArray(json)) {
+      return json as ApiTeam[]
+    }
+    return []
   } catch {
     return []
   }
@@ -2429,7 +2633,7 @@ export async function fetchAllTeamsByCompetitionIdResult(
         }
         lastRes = r
         try { lastJson = await r.clone().json() } catch { lastJson = null }
-      } catch {}
+      } catch { }
     }
     // Fallback: coba ambil semua teams milik user lalu filter by competition_id (berguna untuk owner/organizer di env dev)
     try {
@@ -2445,7 +2649,7 @@ export async function fetchAllTeamsByCompetitionIdResult(
         const filtered = normalized.filter((t: any) => t.competition_id === id || t.competition?.id === id || t.competition?.competition_id === id)
         if (filtered.length > 0) return { status: 200, data: filtered }
       }
-    } catch {}
+    } catch { }
     if (lastRes) {
       let errorMessage = `HTTP ${lastRes.status}`
       if (lastJson && lastJson.message) errorMessage = lastJson.message
@@ -2513,7 +2717,7 @@ export async function fetchOrganizationTeamsByCompetitionIdResult(
       const j = await res.clone().json()
       if (j?.message) errorMessage = j.message
       else if (j?.errors) errorMessage = typeof j.errors === "string" ? j.errors : JSON.stringify(j.errors)
-    } catch {}
+    } catch { }
     return { status: res.status, data: null, error: errorMessage }
   } catch (err: any) {
     return { status: 500, data: null, error: err?.message || "Fetch failed" }
@@ -2614,7 +2818,7 @@ export async function fetchMyTeams(
 export interface UpdateTeamPayload {
   name?: string
   visibility?: boolean
-  description?: string
+  requirement?: string
   skills_team?: string[]
 }
 
@@ -2753,6 +2957,13 @@ export interface CreateSubmissionPayload {
   document_cid: string
 }
 
+export interface CreateDraftSubmissionPayload {
+  title?: string
+  description?: string
+  submission_link?: string
+  document_cid?: string
+}
+
 export async function uploadToKuboIPFS(file: File): Promise<string> {
   const formData = new FormData()
   formData.append("file", file)
@@ -2828,6 +3039,134 @@ export async function submitTeamProjectSubmissionApi(
         success: false,
         status: res.status,
         error: json.message || "Failed to submit project",
+      }
+    }
+
+    return { success: true, status: res.status, data: json.data }
+  } catch (err: any) {
+    return {
+      success: false,
+      status: 500,
+      error: err?.message || "An unexpected error occurred",
+    }
+  }
+}
+
+export async function fetchTeamDraftSubmissionResult(
+  chainIdOrTeamId: number | string,
+  teamIdOrToken?: string | null,
+  tokenMaybe?: string | null
+): Promise<TeamSubmissionResponse> {
+  let chainId: number
+  let teamId: string
+  let token: string | null | undefined
+  if (typeof chainIdOrTeamId === "number") {
+    chainId = resolveChainId(chainIdOrTeamId)
+    teamId = teamIdOrToken as string
+    token = tokenMaybe
+  } else {
+    chainId = DEFAULT_CHAIN_ID
+    teamId = chainIdOrTeamId as string
+    token = teamIdOrToken as string | null | undefined
+  }
+  try {
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+    }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (!authToken) {
+      return { data: null, status: 401, error: "Unauthorized" }
+    }
+    headers["Authorization"] = authToken.startsWith("Bearer ")
+      ? authToken
+      : `Bearer ${authToken}`
+
+    const res = await fetch(
+      `${API_BASE_URL}/chains/${chainId}/teams/${encodeURIComponent(teamId)}/draft-submission`,
+      {
+        headers,
+      }
+    )
+
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}))
+      return {
+        data: null,
+        status: res.status,
+        error: json.message || `Request failed with status ${res.status}`,
+      }
+    }
+
+    const json = await res.json()
+    return {
+      data: json.data || null,
+      status: res.status,
+    }
+  } catch (err: any) {
+    return {
+      data: null,
+      status: 500,
+      error: err?.message || "An unexpected error occurred",
+    }
+  }
+}
+
+export async function submitTeamDraftSubmissionApi(
+  chainIdOrTeamId: number | string,
+  teamIdOrPayload?: string | CreateDraftSubmissionPayload,
+  payloadOrToken?: CreateDraftSubmissionPayload | string | null,
+  tokenMaybe?: string | null
+): Promise<{ success: boolean; status?: number; data?: any; error?: string }> {
+  let chainId: number
+  let teamId: string
+  let payload: CreateDraftSubmissionPayload
+  let token: string | null | undefined
+  if (typeof chainIdOrTeamId === "number") {
+    chainId = resolveChainId(chainIdOrTeamId)
+    teamId = teamIdOrPayload as string
+    payload = payloadOrToken as CreateDraftSubmissionPayload
+    token = tokenMaybe
+  } else {
+    chainId = DEFAULT_CHAIN_ID
+    teamId = chainIdOrTeamId as string
+    payload = teamIdOrPayload as CreateDraftSubmissionPayload
+    token = payloadOrToken as string | null | undefined
+  }
+  try {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    }
+    const authToken = typeof token === "string" ? token : getStoredToken()
+    if (!authToken) {
+      return {
+        success: false,
+        error: "Unauthorized - missing authentication token",
+      }
+    }
+    headers["Authorization"] = authToken.startsWith("Bearer ")
+      ? authToken
+      : `Bearer ${authToken}`
+
+    const res = await fetch(
+      `${API_BASE_URL}/chains/${chainId}/teams/${encodeURIComponent(teamId)}/draft-submission`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+      }
+    )
+
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) {
+      const errMsg =
+        (Array.isArray(json?.message) ? json.message.join(", ") : json?.message) ||
+        json?.error ||
+        `Failed to save draft submission (${res.status})`
+      return {
+        success: false,
+        status: res.status,
+        error: errMsg,
       }
     }
 
@@ -3108,7 +3447,7 @@ export async function fetchMyParticipantMintedCertificatesByTeamResult(
     })
     if (!res.ok) {
       let msg = `HTTP ${res.status}`
-      try { const j = await res.json(); if (j?.message) msg = j.message; else if (j?.error) msg = j.error } catch {}
+      try { const j = await res.json(); if (j?.message) msg = j.message; else if (j?.error) msg = j.error } catch { }
       if (res.status === 404) return { status: 404, data: null, meta: null, error: msg }
       return { status: res.status, data: null, error: msg }
     }
@@ -3146,7 +3485,7 @@ export async function fetchMyParticipantMintedCertificatesAllResult(
     })
     if (!res.ok) {
       let msg = `HTTP ${res.status}`
-      try { const j = await res.json(); if (j?.message) msg = j.message; else if (j?.error) msg = j.error } catch {}
+      try { const j = await res.json(); if (j?.message) msg = j.message; else if (j?.error) msg = j.error } catch { }
       if (res.status === 404) return { status: 404, data: null, meta: null, error: msg }
       return { status: res.status, data: null, error: msg }
     }

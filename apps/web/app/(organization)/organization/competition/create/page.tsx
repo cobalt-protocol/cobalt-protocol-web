@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { ChevronRight, Calendar as CalendarIconLucide, Clock } from 'lucide-react';
 import { useAccount, useChainId, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from 'wagmi';
@@ -222,9 +222,7 @@ interface PrizeCategory {
 }
 
 const INITIAL_PRIZES: PrizeCategory[] = [
-    { place: '1st Place Champion', amount: '30', file: 'Upload1.png', fileObj: null },
-    { place: '2nd Place', amount: '20', file: 'Upload2.png', fileObj: null },
-    { place: '3rd Place', amount: '10', file: 'Upload3.png', fileObj: null },
+    { place: '', amount: '', file: '', fileObj: null },
 ];
 
 async function uploadToKuboIPFS(file: File): Promise<string> {
@@ -254,6 +252,205 @@ async function uploadToKuboIPFS(file: File): Promise<string> {
         return file.name || 'QmDefaultMockCID';
     }
 }
+
+// --- HELPER UNTUK PARSING CUSTOM ERROR DARI SMART CONTRACT & API (SEPERTI PADA TEAM PAYMENT) ---
+interface ErrorDetails {
+    title: string;
+    message: string;
+    details?: string;
+}
+
+function parseContractErrorMessage(err: any): string {
+    console.error("DEBUG parseContractError raw:", err);
+
+    // Check backend API error responses
+    if (err?.payload?.message) {
+        const detailStr = err.payload.errors
+            ? ` (${typeof err.payload.errors === 'string' ? err.payload.errors : JSON.stringify(err.payload.errors)})`
+            : '';
+        return `${err.payload.message}${detailStr}`;
+    }
+
+    const shortMsg = String(err?.shortMessage || "");
+    const msg = String(err?.message || "");
+    const causeMsg = String(err?.cause?.message || "");
+    const detailsMsg = String(err?.details || err?.cause?.details || "");
+    const dataMsg = String(err?.data || err?.cause?.data || "");
+    let walkData = "";
+    try {
+        if (typeof err?.walk === "function") {
+            const walked = err.walk((e: any) => Boolean(e?.data || e?.signature));
+            if (walked) {
+                walkData = String(walked.signature || walked.data || "");
+            }
+        }
+    } catch {}
+
+    const all = (shortMsg + " " + msg + " " + causeMsg + " " + detailsMsg + " " + dataMsg + " " + walkData).toLowerCase();
+
+    // 1. Invalid signature (0x8baa579f)
+    if (all.includes("8baa579f") || all.includes("invalidsignature")) {
+        return "Signature verifikasi pembuatan kompetisi tidak valid (InvalidSignature). Parameter data kompetisi tidak sesuai dengan yang ditandatangani oleh backend signer.";
+    }
+
+    // 2. Signature already used
+    if (all.includes("signaturealreadyused")) {
+        return "Signature untuk pembuatan kompetisi ini sudah pernah digunakan (anti-replay). Mohon coba submit ulang formulir.";
+    }
+
+    // 3. ECDSA Invalid Signature
+    if (all.includes("ecdsainvalidsignature")) {
+        return "Format kriptografi signature EIP-191 dari server tidak valid.";
+    }
+
+    // 4. Not organization (0x61f23ee7)
+    if (all.includes("notorganization") || all.includes("61f23ee7") || all.includes("onlymatchingorganization")) {
+        return "Hanya akun wallet organization yang dapat membuat kompetisi. Akun yang terhubung saat ini bukan organization.";
+    }
+
+    // 5. Token not active / Token not listed (0x7c73a812 / 0xb79f40aa)
+    if (all.includes("tokennotactive") || all.includes("7c73a812")) {
+        return "Token hadiah atau token pendaftaran yang dipilih sedang tidak aktif di smart contract.";
+    }
+    if (all.includes("tokennotlisted") || all.includes("b79f40aa")) {
+        return "Token yang dipilih belum terdaftar (not listed) di dalam smart contract.";
+    }
+
+    // 6. Platform Fee Option (0x7f34f711)
+    if (all.includes("feeoptionnotfound") || all.includes("7f34f711") || all.includes("pricefeenotfound")) {
+        return "Tier platform fee pembuatan kompetisi (Fee ID) tidak ditemukan di smart contract.";
+    }
+
+    // 7. Winners validation
+    if (all.includes("musthavewinner")) {
+        return "Kompetisi wajib memiliki minimal 1 kategori juara/pemenang.";
+    }
+    if (all.includes("prizeamountzero")) {
+        return "Nominal hadiah untuk kategori juara tidak boleh bernilai 0.";
+    }
+    if (all.includes("prizetokenmismatch")) {
+        return "Semua kategori pemenang harus menggunakan jenis token hadiah yang sama.";
+    }
+
+    // 8. Native amount / Fee amount
+    if (all.includes("incorrectnativeamount") || all.includes("32a1ff6f")) {
+        return "Jumlah native token (BHR) yang dikirimkan tidak sesuai dengan biaya platform fee kompetisi.";
+    }
+    if (all.includes("incorrectfeeamount")) {
+        return "Jumlah biaya fee pendaftaran tim tidak sesuai konfigurasi.";
+    }
+    if (all.includes("amountzero")) {
+        return "Nominal biaya pendaftaran tim tidak boleh bernilai 0 jika memilih Paid Entry.";
+    }
+    if (all.includes("nativefrommismatch")) {
+        return "Alamat pembayar tidak cocok dengan akun wallet yang sedang terhubung.";
+    }
+
+    // 9. Balance / Allowance / Transfer
+    if (all.includes("erc20insufficientbalance") || all.includes("e450d38c")) {
+        return "Saldo token di dompet Anda tidak mencukupi untuk biaya pendaftaran atau prize pool.";
+    }
+    if (all.includes("erc20insufficientallowance") || all.includes("fb8f41b2")) {
+        return "Approval token allowance belum mencukupi. Mohon lakukan approve token terlebih dahulu.";
+    }
+    if (all.includes("insufficientcompetitionprize") || all.includes("insufficientprizebalance")) {
+        return "Saldo prize pool pada smart contract tidak mencukupi.";
+    }
+    if (all.includes("transferfailed") || all.includes("90b8ec18")) {
+        return "Gagal mentransfer token. Mohon periksa saldo token atau allowance dompet Anda.";
+    }
+
+    // 10. Competition existence
+    if (all.includes("competitiondoesnotexist") || all.includes("8fe76d05")) {
+        return "Kompetisi tidak ditemukan di blockchain.";
+    }
+
+    // 11. User cancel / rejection
+    if (all.includes("user rejected") || all.includes("user denied") || err?.code === 4001) {
+        return "Transaksi dibatalkan oleh pengguna pada dompet (Wallet).";
+    }
+
+    // 12. If raw hex error selector remains (e.g. 0x8baa579f or 0x[a-f0-9]{8})
+    const hexSelectorMatch = all.match(/0x[a-f0-9]{8}/);
+    if (hexSelectorMatch) {
+        return `Transaksi ditolak oleh smart contract dengan kode error ${hexSelectorMatch[0]}. Mohon periksa kembali konfigurasi data kompetisi.`;
+    }
+
+    // 13. General error fallback without confusing internals
+    if (err?.shortMessage && !err.shortMessage.toLowerCase().includes("reverted on-chain") && !err.shortMessage.toLowerCase().includes("unrecognized custom error")) {
+        return err.shortMessage;
+    }
+
+    if (all.includes("revert")) {
+        return "Transaksi gagal dieksekusi di blockchain (execution reverted). Mohon periksa kembali input formulir dan kecukupan saldo.";
+    }
+
+    return err?.shortMessage || err?.message || "Terjadi kesalahan saat memproses transaksi.";
+}
+
+function parseContractError(err: any): ErrorDetails {
+    if (!err) return { title: 'Error', message: 'Terjadi kesalahan yang tidak diketahui.' };
+
+    if (typeof err === 'string') {
+        return { title: 'Transaction Error', message: parseContractErrorMessage(err) };
+    }
+
+    const parsedMessage = parseContractErrorMessage(err);
+    const rawDetails = err?.details || err?.cause?.details;
+    let details: string | undefined = undefined;
+
+    // Filter out raw hex errors or redundant messages in details
+    if (rawDetails && typeof rawDetails === 'string') {
+        const cleaned = rawDetails.trim();
+        if (
+            cleaned !== parsedMessage &&
+            !cleaned.toLowerCase().includes('8baa579f') &&
+            !cleaned.toLowerCase().includes('invalidsignature')
+        ) {
+            details = cleaned;
+        }
+    }
+
+    return {
+        title: 'Transaction Error',
+        message: parsedMessage,
+        details,
+    };
+}
+
+const ErrorAlert = ({ error, onDismiss }: { error: ErrorDetails; onDismiss?: () => void }) => (
+    <div className="mb-6 p-5 bg-red-50 border border-red-300 rounded-xl text-red-800 text-sm shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
+        <div className="flex items-start justify-between gap-3">
+            <div className="flex items-start space-x-3">
+                <div className="p-1.5 bg-red-100 rounded-lg text-red-600 mt-0.5 shrink-0">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <div className="flex-1">
+                    <h4 className="font-bold text-red-900 text-base">{error.title}</h4>
+                    <p className="mt-1 text-red-800 font-medium leading-relaxed">{error.message}</p>
+                    {error.details && (
+                        <div className="mt-3 p-3 bg-red-100/70 rounded-md border border-red-200/80 font-mono text-xs text-red-900 break-all max-h-48 overflow-y-auto">
+                            <span className="font-bold block mb-1">Technical Trace / Details:</span>
+                            {error.details}
+                        </div>
+                    )}
+                </div>
+            </div>
+            {onDismiss && (
+                <button
+                    type="button"
+                    onClick={onDismiss}
+                    className="text-red-400 hover:text-red-600 p-1.5 rounded-md hover:bg-red-100 transition-colors shrink-0"
+                    title="Dismiss Error"
+                >
+                    ✕
+                </button>
+            )}
+        </div>
+    </div>
+);
 
 // --- KOMPONEN UTAMA ---
 export default function CreateCompetition() {
@@ -286,16 +483,14 @@ export default function CreateCompetition() {
     const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({ hash: txHash });
 
     const [txErrorCustom, setTxErrorCustom] = useState<string | null>(null);
+    const [txErrorObj, setTxErrorObj] = useState<ErrorDetails | null>(null);
     const [isUploadingIpfs, setIsUploadingIpfs] = useState(false);
 
-    const [name, setName] = useState('Autonomous Agents Global Hackathon 2025');
+    const [name, setName] = useState('');
     const [category, setCategory] = useState('AI & Autonomous Systems');
-    const [description, setDescription] = useState(
-        'The Autonomous Agents Global Hackathon 2025 invites world-class AI engineers, cryptography researchers, and smart-contract developers to architect, stress-test, and deploy production-ready autonomous agent clusters. Teams will build verifiable execution runtimes leveraging zero-knowledge proofs and decentralized identity primitives.'
-    );
-    const [requirements, setRequirements] = useState(
-        '- Teams of 1 to 5 members are permitted.\n- Open-source codebase with permissive MIT or Apache 2.0 licensing.\n- Must provide functional public GitHub repository with reproducible test suites.\n- Use of local wallet architecture is not mandatory; however, it is highly recommended.'
-    );
+    const [format, setFormat] = useState<'Online' | 'Offline' | 'Hybrid'>('Online');
+    const [description, setDescription] = useState('');
+    const [requirements, setRequirements] = useState('');
     const [teamSize, setTeamSize] = useState<'1-3 member' | '1-5 member'>('1-5 member');
 
     const handleTeamSizeChange = (selected: '1-3 member' | '1-5 member') => {
@@ -307,9 +502,9 @@ export default function CreateCompetition() {
         }
     };
     const [prizes, setPrizes] = useState<PrizeCategory[]>(INITIAL_PRIZES);
-    const [participantCertificate, setParticipantCertificate] = useState('Upload4.png');
+    const [participantCertificate, setParticipantCertificate] = useState('');
     const [participantCertificateFile, setParticipantCertificateFile] = useState<File | null>(null);
-    const [guidebookFile, setGuidebookFile] = useState('Official_Hackathon_Guidebook_v2.4.pdf');
+    const [guidebookFile, setGuidebookFile] = useState('');
     const [guidebookFileObj, setGuidebookFileObj] = useState<File | null>(null);
     const [priceCompetitionFeeId, setPriceCompetitionFeeId] = useState('1');
     const [feeCompetitionTitle, setFeeCompetitionTitle] = useState<string>('');
@@ -320,6 +515,19 @@ export default function CreateCompetition() {
     const [listingTokens, setListingTokens] = useState<ApiListingTokenPrize[]>([]);
     const [selectedTokenAddress, setSelectedTokenAddress] = useState<string>(TOKENS.BOT.address);
     const [tokenSymbol, setTokenSymbol] = useState<string>(TOKENS.BOT.symbol);
+
+    const [isFreeRegistration, setIsFreeRegistration] = useState(true);
+    const [registrationFee, setRegistrationFee] = useState('0');
+    const [registrationTokenAddress, setRegistrationTokenAddress] = useState<string>(TOKENS.BOT.address);
+
+    const regTokenSymbol = useMemo(() => {
+        const item = listingTokens.find((t) => t.token_address?.toLowerCase() === registrationTokenAddress.toLowerCase());
+        return getTokenSymbol(
+            registrationTokenAddress,
+            chain?.nativeCurrency?.symbol,
+            item?.symbol || item?.token_symbol
+        );
+    }, [listingTokens, registrationTokenAddress, chain?.nativeCurrency?.symbol]);
 
     useEffect(() => {
         async function loadPriceCompetition() {
@@ -346,6 +554,7 @@ export default function CreateCompetition() {
                 const activeToken = tokens.find((t) => t.is_active) || tokens[0];
                 if (activeToken?.token_address) {
                     setSelectedTokenAddress(activeToken.token_address);
+                    setRegistrationTokenAddress(activeToken.token_address);
                     const formattedSymbol = getTokenSymbol(
                         activeToken.token_address,
                         chain?.nativeCurrency?.symbol,
@@ -432,11 +641,9 @@ export default function CreateCompetition() {
     };
 
     const handleAddPrize = () => {
-        const nextNum = prizes.length + 1;
-        const ordinal = nextNum === 4 ? '4th' : nextNum === 5 ? '5th' : `${nextNum}th`;
         setPrizes((prev) => [
             ...prev,
-            { place: `${ordinal} Place`, amount: '0', file: '', fileObj: null },
+            { place: '', amount: '', file: '', fileObj: null },
         ]);
     };
 
@@ -455,7 +662,7 @@ export default function CreateCompetition() {
     };
 
     const handleRemovePrize = (index: number) => {
-        if (index < INITIAL_PRIZES.length) return;
+        if (prizes.length <= 1) return;
         setPrizes((prev) => prev.filter((_, i) => i !== index));
     };
 
@@ -467,19 +674,40 @@ export default function CreateCompetition() {
     // --- Executing createCompetition function on CompetitionManager ---
     const handleCreateCompetition = async () => {
         setTxErrorCustom(null);
+        setTxErrorObj(null);
+
+        const triggerError = (msg: string, title = 'Validation Error') => {
+            setTxErrorCustom(msg);
+            setTxErrorObj({ title, message: msg });
+            setIsUploadingIpfs(false);
+        };
 
         if (!isConnected || !address) {
-            setTxErrorCustom('Please connect your Web3 wallet before publishing the competition.');
+            triggerError('Please connect your Web3 wallet before publishing the competition.', 'Wallet Not Connected');
             return;
         }
 
         if (!name.trim()) {
-            setTxErrorCustom('Competition Name is required.');
+            triggerError('Competition Name is required.', 'Missing Field');
             return;
         }
 
+        if (!format.trim()) {
+            triggerError('Competition Format is required (Online, Offline, or Hybrid).', 'Missing Field');
+            return;
+        }
+
+        if (!isFreeRegistration) {
+            const rawFee = registrationFee.replace(/,/g, '').trim();
+            const parsedFee = parseFloat(rawFee);
+            if (isNaN(parsedFee) || parsedFee <= 0) {
+                triggerError('Team registration fee must be greater than 0 if Paid Entry is selected.', 'Invalid Registration Fee');
+                return;
+            }
+        }
+
         if (!prizes || prizes.length === 0) {
-            setTxErrorCustom('Competition must have at least one prize category/winner.');
+            triggerError('Competition must have at least one prize category/winner.', 'Missing Prize Categories');
             return;
         }
 
@@ -515,8 +743,7 @@ export default function CreateCompetition() {
             const nowTs = BigInt(Math.floor(Date.now() / 1000));
             const prizeClaimTs = toUnix(duration.prizeClaimStart);
             if (prizeClaimTs <= nowTs) {
-                setTxErrorCustom('Prize & Certificate Claim Date must be set to a future date & time.');
-                setIsUploadingIpfs(false);
+                triggerError('Prize & Certificate Claim Date must be set to a future date & time.', 'Invalid Timeline');
                 return;
             }
 
@@ -566,8 +793,7 @@ export default function CreateCompetition() {
                     prizeAmountBigInt = 0n;
                 }
                 if (prizeAmountBigInt <= 0n) {
-                    setTxErrorCustom(`Prize amount for category "${p.place.trim()}" must be greater than 0.`);
-                    setIsUploadingIpfs(false);
+                    triggerError(`Prize amount for category "${p.place.trim()}" must be greater than 0.`, 'Invalid Prize Amount');
                     return;
                 }
             }
@@ -584,13 +810,35 @@ export default function CreateCompetition() {
                 };
             });
 
+            const registrationTokenAddressChecksum = getAddress(
+                registrationTokenAddress && isAddress(registrationTokenAddress)
+                    ? registrationTokenAddress
+                    : prizeTokenAddressChecksum
+            ) as `0x${string}`;
+
+            let registrationFeeBigInt = 0n;
+            if (!isFreeRegistration) {
+                const rawFee = registrationFee.replace(/,/g, '').trim();
+                if (rawFee && parseFloat(rawFee) > 0) {
+                    const regDecimals = await getTokenDecimals(registrationTokenAddressChecksum);
+                    try {
+                        registrationFeeBigInt = parseUnits(rawFee, regDecimals);
+                    } catch {
+                        registrationFeeBigInt = 0n;
+                    }
+                }
+            }
+
             // Upload competition metadata JSON to Kubo IPFS to obtain competition.cid
             const metadataPayload = {
                 name: name.trim(),
                 category: category.trim(),
+                format: format.trim(),
                 description: description.trim(),
                 requirements: requirements.trim(),
                 formation: teamSize.trim(),
+                fee: registrationFeeBigInt > 0n ? registrationFee.replace(/,/g, '').trim() : 0,
+                feeTokenAddress: registrationTokenAddressChecksum,
                 schedule: {
                     registrationWindow: Number(toUnix(duration.registrationEnd || duration.registrationStart)),
                     competitionWindow: Number(toUnix(duration.competitionEnd || duration.competitionStart)),
@@ -617,16 +865,14 @@ export default function CreateCompetition() {
 
             const orgAddress = getAddress(address) as `0x${string}`;
             const _payment = {
-                tokenAddress: prizeTokenAddressChecksum,
-                fee: 0n,
+                tokenAddress: registrationTokenAddressChecksum,
+                fee: registrationFeeBigInt,
             };
 
             const _competition = {
                 id: 0n,
                 cid: compCid,
-                formation: teamSize.trim(),
                 organization: orgAddress,
-                prizeCertificateClaim: prizeClaimTs,
                 certificateCID: participantCertCID || '',
                 payment: _payment,
             };
@@ -856,9 +1102,9 @@ export default function CreateCompetition() {
                     competition: {
                         id: '0',
                         cid: _competition.cid,
-                        formation: _competition.formation,
+                        formation: teamSize.trim(),
                         organization: _competition.organization,
-                        prizeCertificateClaim: _competition.prizeCertificateClaim.toString(),
+                        prizeCertificateClaim: prizeClaimTs.toString(),
                         certificateCID: _competition.certificateCID,
                         payment: {
                             tokenAddress: _payment.tokenAddress,
@@ -883,27 +1129,65 @@ export default function CreateCompetition() {
 
             const signature = sigRes?.data?.signature as `0x${string}` | undefined;
             if (!signature) {
-                setTxErrorCustom('Failed to obtain createCompetition signature from server.');
-                setIsUploadingIpfs(false);
+                const apiMsg = (sigRes as any)?.message || 'Failed to obtain createCompetition signature from server.';
+                triggerError(apiMsg, 'API Signature Error');
                 return;
             }
 
-            await writeContractAsync({
-                address: getAddress(competitionContractAddress),
+            const targetContract = (sigRes?.data?.contract_address as `0x${string}`) || getAddress(competitionContractAddress);
+
+            // Simulate transaction first to catch any contract reverts with exact custom errors before wallet popup
+            if (publicClient) {
+                try {
+                    await publicClient.simulateContract({
+                        address: targetContract,
+                        abi: CompetitionManagerABI as any,
+                        functionName: 'createCompetition',
+                        args: [_competition, _payment, _winners, feeIdBigInt, signature],
+                        value: txValue,
+                        account: address,
+                    });
+                } catch (simErr: any) {
+                    console.error('Simulation failed createCompetition:', simErr);
+                    const parsed = parseContractError(simErr);
+                    setTxErrorObj(parsed);
+                    setTxErrorCustom(parsed.message);
+                    setIsUploadingIpfs(false);
+                    return;
+                }
+            }
+
+            const tx = await writeContractAsync({
+                address: targetContract,
                 abi: CompetitionManagerABI as any,
                 functionName: 'createCompetition',
                 args: [_competition, _payment, _winners, feeIdBigInt, signature],
                 value: txValue,
             });
+
+            if (publicClient && tx) {
+                const receipt = await publicClient.waitForTransactionReceipt({ hash: tx });
+                if (receipt.status === 'reverted') {
+                    throw new Error('Transaction reverted on-chain');
+                }
+            }
         } catch (err: any) {
             console.error('createCompetition error:', err);
             setIsUploadingIpfs(false);
-            setTxErrorCustom(err?.shortMessage || err?.message || 'Failed to complete process');
+            const parsed = parseContractError(err);
+            setTxErrorObj(parsed);
+            setTxErrorCustom(parsed.message);
         }
     };
 
     const isProcessing = isWritePending || isConfirming;
-    const activeError = txErrorCustom || (writeError ? (writeError as any).shortMessage || writeError.message : null);
+    const activeErrorDetails = useMemo(() => {
+        if (txErrorObj) return txErrorObj;
+        if (txErrorCustom) return { title: 'Error', message: txErrorCustom };
+        if (writeError) return parseContractError(writeError);
+        return null;
+    }, [txErrorObj, txErrorCustom, writeError]);
+
     return (
         <div className="w-full bg-[#F8F9FF] py-10 font-sans text-slate-800">
             <div className="mx-auto max-w-7xl px-5 md:px-10 flex flex-col">
@@ -926,6 +1210,17 @@ export default function CreateCompetition() {
                     </div>
                 </div>
 
+                {/* TOP ERROR ALERT BANNER */}
+                {activeErrorDetails && (
+                    <ErrorAlert
+                        error={activeErrorDetails}
+                        onDismiss={() => {
+                            setTxErrorCustom(null);
+                            setTxErrorObj(null);
+                        }}
+                    />
+                )}
+
                 {/* SECTION 1: BASIC INFORMATION */}
                 <SectionCard
                     icon={<InfoIcon />}
@@ -933,11 +1228,12 @@ export default function CreateCompetition() {
                     description="Provide the essential information needed to identify the competition."
                     step="STEP 01/06"
                 >
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         <div>
                             <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Name *</label>
                             <input
                                 type="text"
+                                placeholder="e.g. Autonomous Agents Global Hackathon 2025"
                                 className="w-full bg-white border border-slate-200/80 text-slate-700 py-2.5 px-4 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                                 value={name}
                                 onChange={(e) => setName(e.target.value)}
@@ -958,6 +1254,34 @@ export default function CreateCompetition() {
                                 </SelectContent>
                             </Select>
                         </div>
+                        <div>
+                            <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Format *</label>
+                            <Select value={format} onValueChange={(val) => val && setFormat(val as 'Online' | 'Offline' | 'Hybrid')}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select Format" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="Online">Online</SelectItem>
+                                    <SelectItem value="Offline">Offline</SelectItem>
+                                    <SelectItem value="Hybrid">Hybrid</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center gap-6">
+                        <span className="text-xs font-medium text-slate-500">Or Select via Checkbox:</span>
+                        {(['Online', 'Offline', 'Hybrid'] as const).map((item) => (
+                            <label key={item} className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer select-none">
+                                <input
+                                    type="checkbox"
+                                    checked={format === item}
+                                    onChange={() => setFormat(item)}
+                                    className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                />
+                                <span className="font-medium text-slate-700">{item}</span>
+                            </label>
+                        ))}
                     </div>
                 </SectionCard>
 
@@ -972,6 +1296,7 @@ export default function CreateCompetition() {
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Competition Description *</label>
                         <textarea
                             rows={3}
+                            placeholder="Explain the competition, its challenges, and what participants are expected to do..."
                             className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs"
                             value={description}
                             onChange={(e) => setDescription(e.target.value)}
@@ -1004,6 +1329,7 @@ export default function CreateCompetition() {
                         <label className="block text-xs font-semibold text-slate-600 mb-2">Participant Requirements *</label>
                         <textarea
                             rows={3}
+                            placeholder="e.g. Teams of 1 to 5 members are permitted, open-source codebase with MIT/Apache license, etc."
                             className="w-full bg-white border border-slate-200/80 text-slate-700 py-3 px-4 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm shadow-2xs"
                             value={requirements}
                             onChange={(e) => setRequirements(e.target.value)}
@@ -1082,13 +1408,14 @@ export default function CreateCompetition() {
                 >
                     <div className="space-y-3">
                         {prizes.map((prize, index) => {
-                            const isDefaultCard = index < INITIAL_PRIZES.length;
+                            const canDelete = prizes.length > 1;
                             return (
                                 <div key={index} className="bg-[#EFF4FF] rounded-lg p-4 grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
-                                    <div className={!isDefaultCard ? "md:col-span-4" : "md:col-span-4"}>
+                                    <div className="md:col-span-4">
                                         <label className="block text-[10px] font-bold text-slate-400 uppercase mb-1">Prize Category Name</label>
                                         <input
                                             type="text"
+                                            placeholder="e.g. 1st Place Champion"
                                             className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                                             value={prize.place}
                                             onChange={(e) => handlePrizeChange(index, 'place', e.target.value)}
@@ -1099,6 +1426,7 @@ export default function CreateCompetition() {
                                         <div className="relative">
                                             <input
                                                 type="text"
+                                                placeholder="0"
                                                 className="w-full bg-white/70 focus:bg-white text-slate-700 py-2 px-3 pr-12 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                                                 value={prize.amount}
                                                 onChange={(e) => handlePrizeChange(index, 'amount', e.target.value)}
@@ -1143,14 +1471,14 @@ export default function CreateCompetition() {
                                             </span>
                                         </div>
                                     </div>
-                                    <div className={!isDefaultCard ? "md:col-span-3" : "md:col-span-4"}>
+                                    <div className={canDelete ? "md:col-span-3" : "md:col-span-4"}>
                                         <CertificateFileInput
                                             fileName={prize.file}
                                             onFileChange={(file) => handleCertificateChange(index, file)}
                                             accept="image/*"
                                         />
                                     </div>
-                                    {!isDefaultCard && (
+                                    {canDelete && (
                                         <div className="md:col-span-1 flex justify-end items-center pt-2 md:pt-4">
                                             <button
                                                 type="button"
@@ -1253,7 +1581,93 @@ export default function CreateCompetition() {
                     description="Configure pricing fee tier and confirm prize pool payment before publishing on-chain."
                     step="STEP 06/06"
                 >
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    {/* TEAM REGISTRATION FEE CONFIGURATION */}
+                    <div className="bg-[#EFF4FF] rounded-lg p-5 mb-6 border border-blue-100">
+                        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                            <div>
+                                <h3 className="text-sm font-bold text-slate-800">Team Registration Fee (Harga Pendaftaran Tim) *</h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Tentukan apakah pendaftaran tim gratis atau berbayar beserta nominal biaya pendaftarannya.
+                                </p>
+                            </div>
+                            <div className="flex items-center space-x-6">
+                                <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={isFreeRegistration}
+                                        onChange={() => {
+                                            setIsFreeRegistration(true);
+                                            setRegistrationFee('0');
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span className="font-semibold text-slate-700">Free Entry (Gratis)</span>
+                                </label>
+                                <label className="flex items-center space-x-2 text-sm text-slate-700 cursor-pointer select-none">
+                                    <input
+                                        type="checkbox"
+                                        checked={!isFreeRegistration}
+                                        onChange={() => {
+                                            setIsFreeRegistration(false);
+                                            if (registrationFee === '0') setRegistrationFee('10');
+                                        }}
+                                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
+                                    />
+                                    <span className="font-semibold text-slate-700">Paid Entry (Berbayar)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        {!isFreeRegistration && (
+                            <div className="pt-4 border-t border-blue-200/60 max-w-sm">
+                                <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+                                    Nominal Biaya Pendaftaran per Tim *
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type="text"
+                                        placeholder="Contoh: 10"
+                                        value={registrationFee}
+                                        onChange={(e) => setRegistrationFee(e.target.value)}
+                                        className="w-full bg-white text-slate-700 py-2.5 px-3.5 pr-20 rounded-md text-sm border border-slate-200/80 focus:outline-none focus:ring-2 focus:ring-blue-500 font-medium shadow-2xs"
+                                    />
+                                    <span className="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-500 text-xs font-semibold">
+                                        {listingTokens.length > 1 ? (
+                                            <Select
+                                                value={registrationTokenAddress}
+                                                onValueChange={(val) => {
+                                                    if (!val) return;
+                                                    setRegistrationTokenAddress(val);
+                                                }}
+                                            >
+                                                <SelectTrigger className="h-5 text-xs border-none bg-transparent p-0 text-slate-500 font-semibold focus:ring-0 shadow-none gap-0.5 cursor-pointer">
+                                                    <SelectValue>{regTokenSymbol}</SelectValue>
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    {listingTokens.map((t) => {
+                                                        const sym = getTokenSymbol(
+                                                            t.token_address,
+                                                            chain?.nativeCurrency?.symbol,
+                                                            t.symbol || t.token_symbol
+                                                        );
+                                                        return (
+                                                            <SelectItem key={t.id} value={t.token_address}>
+                                                                {sym}
+                                                            </SelectItem>
+                                                        );
+                                                    })}
+                                                </SelectContent>
+                                            </Select>
+                                        ) : (
+                                            regTokenSymbol
+                                        )}
+                                    </span>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                         {/* Total Prize */}
                         <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-center border border-blue-100">
                             <p className="text-xs font-semibold text-slate-500 mb-1">Total Prize Pool</p>
@@ -1261,7 +1675,27 @@ export default function CreateCompetition() {
                                 <span className="text-2xl font-bold text-slate-800">{totalPrizeAmount.toLocaleString()}</span>
                                 <span className="text-xs font-semibold text-slate-600 mb-1">{tokenSymbol}</span>
                             </div>
-                            <p className="text-[10px] text-slate-500">Calculated across {prizes.length} prize {prizes.length === 1 ? 'pool' : 'pools'}</p>
+                            <p className="text-[10px] text-slate-500">Across {prizes.length} prize {prizes.length === 1 ? 'pool' : 'pools'}</p>
+                        </div>
+
+                        {/* Team Registration Fee */}
+                        <div className="bg-[#EFF4FF] rounded-lg p-5 flex flex-col justify-center border border-blue-100">
+                            <p className="text-xs font-semibold text-slate-500 mb-1">Team Registration Fee</p>
+                            <div className="flex items-end space-x-1.5 mb-2">
+                                <span className="text-2xl font-bold text-slate-800">
+                                    {isFreeRegistration || parseFloat(registrationFee.replace(/,/g, '') || '0') <= 0
+                                        ? 'Free'
+                                        : registrationFee}
+                                </span>
+                                {!isFreeRegistration && parseFloat(registrationFee.replace(/,/g, '') || '0') > 0 && (
+                                    <span className="text-xs font-semibold text-slate-600 mb-1">{regTokenSymbol} / team</span>
+                                )}
+                            </div>
+                            <p className="text-[10px] text-slate-500">
+                                {isFreeRegistration || parseFloat(registrationFee.replace(/,/g, '') || '0') <= 0
+                                    ? 'No entry cost for squads'
+                                    : 'Per squad entry fee'}
+                            </p>
                         </div>
 
                         {/* Fee Competition */}
@@ -1294,11 +1728,14 @@ export default function CreateCompetition() {
                     </div>
 
                     {/* TRANSACTION STATUS FEEDBACK */}
-                    {activeError && (
-                        <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm flex items-start space-x-2">
-                            <span className="font-bold">Error:</span>
-                            <span className="break-all">{activeError}</span>
-                        </div>
+                    {activeErrorDetails && (
+                        <ErrorAlert
+                            error={activeErrorDetails}
+                            onDismiss={() => {
+                                setTxErrorCustom(null);
+                                setTxErrorObj(null);
+                            }}
+                        />
                     )}
 
                     {isProcessing && (

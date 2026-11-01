@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { ArrowRight, KeyRound, Loader2, RefreshCw, Search, Sparkles } from "lucide-react"
-import { useQuery } from "@tanstack/react-query"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 import { useAccount, useChainId } from "wagmi"
 import { Button } from "@workspace/ui/components/button"
 import {
@@ -22,6 +22,8 @@ import { getPrizeTotal } from "@/features/competitions/lib/competition-selectors
 import { useMemberships } from "@/features/registration/hooks/use-memberships"
 import {
   acceptTeamInviteByCode,
+  fetchAiRecommendedTeams,
+  fetchAiRecommendedTeamById,
   fetchTeamsByCompetitionId,
   getStoredToken,
   joinTeamByCode,
@@ -31,14 +33,31 @@ import {
 import { formatMoney } from "@/lib/format"
 import { routes } from "@/lib/routes"
 import {
-  recommendTeams,
   searchTeams,
   teamsPerPage,
 } from "../lib/team-selectors"
 import type { TeamListing } from "../types"
 import { TeamCard } from "./team-card"
 
+function parsePercentageScore(
+  value?: string | number | null,
+  fallback = 85
+): number {
+  if (typeof value === "number" && !isNaN(value)) {
+    return Math.min(100, Math.max(0, Math.round(value)))
+  }
+  if (typeof value === "string") {
+    const cleaned = value.replace(/[^0-9.]/g, "")
+    const parsed = parseFloat(cleaned)
+    if (!isNaN(parsed)) {
+      return Math.min(100, Math.max(0, Math.round(parsed)))
+    }
+  }
+  return fallback
+}
+
 export function JoinTeamPage({ competition }: { competition: Competition }) {
+  const queryClient = useQueryClient()
   const chainId = useChainId()
   const router = useRouter()
   const { isConnected, status: accountStatus } = useAccount()
@@ -49,7 +68,7 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
   const [code, setCode] = useState("")
   const [error, setError] = useState<string | null>(null)
   const [discarded, setDiscarded] = useState<string[]>([])
-  const [refreshOffset, setRefreshOffset] = useState(0)
+  const [refreshingTeamId, setRefreshingTeamId] = useState<string | null>(null)
   const [showProfilePrompt, setShowProfilePrompt] = useState(false)
   const [submittingTeamId, setSubmittingTeamId] = useState<string | null>(null)
   const [isSubmittingCode, setIsSubmittingCode] = useState(false)
@@ -70,13 +89,22 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
     }
   }, [hasCheckedToken, isConnected, accountStatus, storedToken, router])
 
-  // Fetch teams via GET /api/v1/chains/:chainId/competitions/:competitionId/join-teams
-  // Protected AuthSessionGuard, filter visibility=true, chain_id via indexer_state,
-  // skip team yang sudah ada di request_join / team_role untuk user login
+  // Fetch public teams via GET /api/v1/teams/competition/:competitionId
   const { data: apiTeams = [], isLoading: isLoadingTeams } = useQuery({
-    queryKey: ["competition-teams", chainId, competition.id],
-    queryFn: () => fetchTeamsByCompetitionId(chainId, competition.id),
+    queryKey: ["competition-teams", competition.id],
+    queryFn: () => fetchTeamsByCompetitionId(competition.id),
     enabled: Boolean(competition.id),
+  })
+
+  // Fetch AI recommended squads via Cobalt AI service (http://localhost:8001/api/recommendation-team/{competition_id})
+  const {
+    data: aiTeams = [],
+    isLoading: isLoadingAi,
+    refetch: refetchAi,
+  } = useQuery({
+    queryKey: ["ai-recommendation-teams", competition.id, storedToken],
+    queryFn: () => fetchAiRecommendedTeams(competition.id, storedToken),
+    enabled: Boolean(storedToken && competition.id),
   })
 
   const mappedApiTeams: TeamListing[] = useMemo(() => {
@@ -104,12 +132,12 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
           name: item.name,
           lead: leadName,
           memberCount: item.team_roles?.length || 1,
-          description: item.description || "No description provided.",
+          description: item.competition?.description || competition.description || "No description provided.",
           roles: skills,
           matchScore: Math.max(75, 98 - idx * 3),
         }
       })
-  }, [apiTeams])
+  }, [apiTeams, competition.description])
 
   const membership = memberships.find(
     (item) => item.competitionSlug === competition.slug
@@ -130,9 +158,97 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
   const pages = Math.max(1, Math.ceil(filtered.length / teamsPerPage))
   const currentPage = Math.min(page, pages)
   const start = (currentPage - 1) * teamsPerPage
-  const recommendations = recommendTeams(available, discarded, refreshOffset)
+  const recommendations: TeamListing[] = useMemo(() => {
+    if (!aiTeams || aiTeams.length === 0) {
+      return []
+    }
+
+    return aiTeams
+      .filter((item) => {
+        const teamId = item.team_id || item.id || ""
+        if (!teamId || discarded.includes(teamId)) return false
+        // Filter agar tim benar-benar milik kompetisi ini jika competition_id tersedia
+        if (item.competition_id && item.competition_id !== competition.id) {
+          return false
+        }
+        return true
+      })
+      .map((item) => {
+        const teamId = item.team_id || item.id || ""
+        const teamName = item.team_name || item.name || "Squad"
+        const teamDesc = item.team_description || item.description || "No description provided."
+        const matchScore = parsePercentageScore(item.persentage, 85)
+
+        const leadName =
+          item.username ||
+          (item.wallet_address
+            ? `${item.wallet_address.slice(0, 6)}...${item.wallet_address.slice(-4)}`
+            : item.user_id
+              ? `User ${item.user_id.slice(-6)}`
+              : "Squad Lead")
+
+        const roles =
+          item.skills_team && Array.isArray(item.skills_team) && item.skills_team.length > 0
+            ? item.skills_team.map((st: any) => st.name).filter(Boolean)
+            : item.requirement
+              ? item.requirement
+                  .split(/[,;\n]/)
+                  .map((s) => s.trim())
+                  .filter(Boolean)
+              : []
+
+        return {
+          id: teamId,
+          name: teamName,
+          lead: leadName,
+          memberCount: 1,
+          description: teamDesc,
+          roles,
+          matchScore,
+        }
+      })
+      .filter((team) => team.memberCount < capacity)
+      .sort((a, b) => b.matchScore - a.matchScore)
+  }, [
+    aiTeams,
+    mappedApiTeams,
+    competition.id,
+    discarded,
+    capacity,
+  ])
   const disabled = !ready || Boolean(membership)
 
+  async function refreshSingleTeam(teamId: string) {
+    if (refreshingTeamId) return
+    setRefreshingTeamId(teamId)
+    try {
+      const updated = await fetchAiRecommendedTeamById(
+        competition.id,
+        teamId,
+        storedToken
+      )
+      if (updated) {
+        queryClient.setQueryData<any[]>(
+          ["ai-recommendation-teams", competition.id, storedToken],
+          (old) => {
+            if (!old) return old
+            return old.map((t) => {
+              const id = t.team_id || t.id
+              if (id === teamId) {
+                return { ...t, ...updated }
+              }
+              return t
+            })
+          }
+        )
+        await refetchAi()
+      }
+    } catch (err) {
+      console.warn("Failed to refresh team recommendation:", err)
+    } finally {
+      setRefreshingTeamId(null)
+    }
+  }
   async function requestTeam(team: TeamListing, inviteCode: string | null = null) {
     if (disabled) return
     if (team.memberCount >= capacity) {
@@ -393,24 +509,27 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
               <Sparkles size={24} />
             </span>
             <div>
-              <h2 className="text-lg font-bold">
+              <h2 className="text-lg font-bold flex items-center gap-2">
                 AI Recommended Squads{" "}
                 <Badge tone="green">Algorithmic Match Preview</Badge>
+                {isLoadingAi && (
+                  <Loader2 className="h-4 w-4 animate-spin text-primary ml-1" />
+                )}
               </h2>
               <p className="mt-1 text-xs text-muted-foreground">
-                Discover complementary skills in LangGraph, Rust, PyTorch, and
-                product design.
+                Discover complementary skills matched specifically to your profile by Cobalt AI.
               </p>
             </div>
           </div>
           <Button
             variant="outline"
+            disabled={isLoadingAi}
             onClick={() => {
               setDiscarded([])
-              setRefreshOffset((value) => value + 4)
+              refetchAi()
             }}
           >
-            <RefreshCw size={14} />
+            <RefreshCw size={14} className={isLoadingAi ? "animate-spin" : ""} />
             Refresh All Recommendations
           </Button>
         </div>
@@ -422,15 +541,16 @@ export function JoinTeamPage({ competition }: { competition: Competition }) {
               capacity={capacity}
               disabled={disabled}
               isSubmitting={submittingTeamId === team.id}
+              isRefreshing={refreshingTeamId === team.id}
               onRequest={() => requestTeam(team)}
               onDiscard={() => setDiscarded((current) => [...current, team.id])}
-              onRefresh={() => setDiscarded((current) => [...current, team.id])}
+              onRefresh={() => refreshSingleTeam(team.id)}
             />
           ))}
         </div>
-        {!recommendations.length && (
+        {!recommendations.length && !isLoadingAi && (
           <p className="py-8 text-center text-sm text-muted-foreground">
-            No more recommendations. Refresh to see dismissed squads again.
+            No recommendations found for your profile. Update your skills in profile or refresh to explore.
           </p>
         )}
       </Panel>

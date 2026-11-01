@@ -23,35 +23,53 @@ import { useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   DEFAULT_CHAIN_ID,
   fetchTeamSubmissionResult,
+  fetchTeamDraftSubmissionResult,
   submitTeamProjectSubmissionApi,
+  submitTeamDraftSubmissionApi,
   uploadToKuboIPFS,
   type ApiSubmissionProject,
 } from "@/lib/competitions-api"
 
 function SubmissionEditor({
   initialDraft,
+  initialDocumentCid,
   onSave,
   teamId,
   chainId,
   onSuccess,
   onClear,
+  onDraftSaved,
 }: {
   initialDraft: SubmissionDraft
+  initialDocumentCid?: string | null
   onSave: (draft: SubmissionDraft) => boolean
   teamId?: string
   chainId?: number
   onSuccess?: () => void
   onClear?: () => void
+  onDraftSaved?: () => void
 }) {
   const [draft, setDraft] = useState(initialDraft)
   const [file, setFile] = useState<File | null>(null)
+  const [existingCid, setExistingCid] = useState<string | null>(initialDocumentCid || null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [isSavingDraft, setIsSavingDraft] = useState(false)
   const [feedback, setFeedback] = useState("")
   const inputRef = useRef<HTMLInputElement>(null)
+
+  const ipfsGatewayBase = (
+    process.env.NEXT_PUBLIC_IPFS_GATEWAY_URL || "http://localhost:8081/ipfs"
+  ).replace(/\/$/, "")
+  const cleanCid = existingCid?.replace(/^ipfs:\/\//, "") || ""
+  const kuboDraftUrl = cleanCid ? `${ipfsGatewayBase}/${cleanCid}` : ""
 
   useEffect(() => {
     setDraft(initialDraft)
   }, [initialDraft])
+
+  useEffect(() => {
+    setExistingCid(initialDocumentCid || null)
+  }, [initialDocumentCid])
   function selectFile(next: File | undefined) {
     if (!next) return
     const error = validateSubmissionFile(next)
@@ -82,20 +100,24 @@ function SubmissionEditor({
       return
     }
 
-    if (!file) {
+    if (!file && !existingCid) {
       setFeedback("Please select a deliverable file to upload.")
       return
     }
 
     setIsSubmitting(true)
-    setFeedback("Uploading file to Kubo IPFS...")
 
     try {
-      // 1. Upload file to Kubo IPFS
-      const cid = await uploadToKuboIPFS(file)
-      setFeedback(
-        `File uploaded to IPFS (CID: ${cid}). Submitting project to API...`
-      )
+      let cid = existingCid || ""
+      if (file) {
+        setFeedback("Uploading file to Kubo IPFS...")
+        cid = await uploadToKuboIPFS(file)
+        setFeedback(
+          `File uploaded to IPFS (CID: ${cid}). Submitting project to API...`
+        )
+      } else {
+        setFeedback("Submitting project deliverables to API...")
+      }
 
       // 2. Submit to API endpoint POST /chains/:chainId/teams/:teamId/submission
       const result = await submitTeamProjectSubmissionApi(chainId ?? DEFAULT_CHAIN_ID, teamId as string, {
@@ -208,12 +230,12 @@ function SubmissionEditor({
               onChange={(event) => selectFile(event.target.files?.[0])}
             />
           </label>
-          {file && (
+          {file ? (
             <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-lg bg-blue-50 p-3 text-xs">
-              <span className="truncate">{file.name}</span>
+              <span className="truncate font-medium text-slate-800">{file.name}</span>
               <button
                 type="button"
-                disabled={isSubmitting}
+                disabled={isSubmitting || isSavingDraft}
                 aria-label="Remove attachment"
                 onClick={() => {
                   setFile(null)
@@ -223,7 +245,34 @@ function SubmissionEditor({
                 <X size={15} />
               </button>
             </div>
-          )}
+          ) : existingCid ? (
+            <div className="mt-3 flex min-w-0 items-center justify-between gap-2 rounded-lg border border-blue-200 bg-blue-50/80 p-3 text-xs">
+              <div className="flex min-w-0 items-center gap-2">
+                <span className="font-semibold text-blue-950 shrink-0">Draft File (Kubo IPFS):</span>
+                <a
+                  href={kuboDraftUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1 font-mono text-blue-600 hover:underline truncate"
+                  title={existingCid}
+                >
+                  <span className="truncate max-w-[180px] sm:max-w-xs">{cleanCid}</span>
+                  <ExternalLink size={13} className="shrink-0" />
+                </a>
+              </div>
+              <button
+                type="button"
+                disabled={isSubmitting || isSavingDraft}
+                aria-label="Remove draft file"
+                onClick={() => {
+                  setExistingCid(null)
+                }}
+                className="text-slate-400 hover:text-slate-600 shrink-0"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          ) : null}
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             Selected files will be uploaded to IPFS upon submission.
           </p>
@@ -238,6 +287,7 @@ function SubmissionEditor({
           onClick={() => {
             setDraft(emptySubmission)
             setFile(null)
+            setExistingCid(null)
             if (inputRef.current) inputRef.current.value = ""
             onSave(emptySubmission)
             onClear?.()
@@ -250,16 +300,62 @@ function SubmissionEditor({
           type="button"
           variant="secondary"
           className="h-10"
-          disabled={isSubmitting}
-          onClick={() =>
-            setFeedback(
-              onSave(draft)
-                ? "Draft text saved in this browser."
-                : "Could not save the draft. Browser storage is unavailable."
-            )
-          }
+          disabled={isSubmitting || isSavingDraft}
+          onClick={async () => {
+            if (!teamId) {
+              setFeedback("Team ID is missing. Cannot save draft.")
+              return
+            }
+
+            if (!draft.title.trim()) {
+              setFeedback("Please enter a title before saving draft.")
+              return
+            }
+
+            setIsSavingDraft(true)
+            setFeedback("Saving draft...")
+
+            try {
+              let documentCid = existingCid || ""
+
+              // Jika ada file lokal baru, upload ke IPFS
+              if (file) {
+                setFeedback("Uploading file to IPFS...")
+                try {
+                  documentCid = await uploadToKuboIPFS(file)
+                  setExistingCid(documentCid)
+                } catch (ipfsErr: any) {
+                  console.warn("IPFS upload skipped during draft save:", ipfsErr)
+                }
+              }
+
+              const result = await submitTeamDraftSubmissionApi(
+                chainId ?? DEFAULT_CHAIN_ID,
+                teamId,
+                {
+                  title: draft.title.trim(),
+                  description: draft.description.trim(),
+                  submission_link: draft.link.trim(),
+                  document_cid: documentCid,
+                }
+              )
+
+              if (!result.success) {
+                setFeedback(`Failed to save draft: ${result.error || "Unknown error"}`)
+              } else {
+                // Simpan juga ke browser storage sebagai backup
+                onSave(draft)
+                setFeedback("Draft saved successfully to server.")
+                onDraftSaved?.()
+              }
+            } catch (err: any) {
+              setFeedback(`Error saving draft: ${err?.message || "Unknown error"}`)
+            } finally {
+              setIsSavingDraft(false)
+            }
+          }}
         >
-          Save Draft
+          {isSavingDraft ? "Saving..." : "Save Draft"}
         </Button>
         <Button type="submit" className="h-10" disabled={isSubmitting}>
           {isSubmitting ? "Submitting..." : "Submit Project"}
@@ -397,6 +493,17 @@ export function SubmissionForm({
 
   const existingSubmission = submissionResult?.data
 
+  const {
+    data: draftSubmissionResult,
+    isLoading: isLoadingDraftSubmission,
+  } = useQuery({
+    queryKey: ["team-draft-submission", chainId, teamId],
+    queryFn: () => (teamId ? fetchTeamDraftSubmissionResult(chainId, teamId) : null),
+    enabled: Boolean(teamId && !existingSubmission),
+  })
+
+  const existingDraft = draftSubmissionResult?.data
+
   // Jika submission sudah tercatat di database, bersihkan draft lokal yang tersisa
   useEffect(() => {
     if (existingSubmission) {
@@ -415,7 +522,13 @@ export function SubmissionForm({
         description: existingSubmission.description || "",
         link: existingSubmission.submission_link,
       }
-    : value
+    : existingDraft
+      ? {
+          title: existingDraft.title || "",
+          description: existingDraft.description || "",
+          link: existingDraft.submission_link || "",
+        }
+      : value
 
   return (
     <Panel>
@@ -424,12 +537,14 @@ export function SubmissionForm({
         aside={
           existingSubmission ? (
             <Badge tone="green">Submitted</Badge>
+          ) : existingDraft ? (
+            <Badge tone="blue">Draft saved</Badge>
           ) : (
             <Badge>Local draft</Badge>
           )
         }
       />
-      {isLoadingSubmission ? (
+      {isLoadingSubmission || isLoadingDraftSubmission ? (
         <p role="status" className="text-sm text-slate-500">
           Checking submission status...
         </p>
@@ -455,16 +570,25 @@ export function SubmissionForm({
             </div>
           )}
           <SubmissionEditor
-            key={`${competitionId}-${teamId || "default"}-${existingSubmission?.id || "new"}`}
+            key={`${competitionId}-${teamId || "default"}-${existingSubmission?.id || existingDraft?.id || "new"}`}
             initialDraft={initialDraft}
+            initialDocumentCid={existingSubmission?.document_cid || existingDraft?.document_cid || null}
             onSave={save}
             onClear={handleClearDraft}
+            onDraftSaved={() => {
+              queryClient.invalidateQueries({
+                queryKey: ["team-draft-submission", chainId, teamId],
+              })
+            }}
             teamId={teamId}
             chainId={chainId}
             onSuccess={() => {
               handleClearDraft()
               queryClient.invalidateQueries({
                 queryKey: ["team-submission", chainId, teamId],
+              })
+              queryClient.invalidateQueries({
+                queryKey: ["team-draft-submission", chainId, teamId],
               })
               setIsEditing(false)
             }}

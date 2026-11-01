@@ -559,144 +559,98 @@ export function WorkspaceAnnouncements({
           )}
         </div>
 
-        {/* Winner Certificate Cards */}
-        {winnerList.length > 0 ? (
-          winnerList.map((winner, idx) => {
-            const targetWinnerId = winner.winner_id
-              ? String(winner.winner_id)
-              : winner.id
-                ? String(winner.id)
-                : String(idx + 1)
-            const title =
-              winner.category ||
-              winner.title ||
-              `Winner Certificate #${idx + 1}`
-            const winCid = winner.certificate_cid || certificateCid
-            const isWinnerMintingItem = Boolean(mintingWinnerIds[targetWinnerId])
-            const isWinnerMintedItem = Boolean(mintedWinnerIds[targetWinnerId])
-            const itemError = winnerMintErrors[targetWinnerId]
+        {/* Single Winner Certificate Card */}
+        {(() => {
+          const myWinner =
+            winnerList.find(
+              (w) =>
+                (teamId && (w.team_id === teamId || w.team?.id === teamId)) ||
+                (connectedAddress &&
+                  (w.wallet_address?.toLowerCase() === connectedAddress?.toLowerCase() ||
+                    w.recipient?.toLowerCase() === connectedAddress?.toLowerCase()))
+            ) || (winnerList.length === 1 ? winnerList[0] : null)
 
-            return (
-              <div
-                key={winner.id || targetWinnerId || idx}
-                className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5"
-              >
-                <div className="flex items-center gap-2">
-                  <FileBadge size={23} className="text-slate-400" />
-                  <h3 className="text-sm font-bold truncate">
-                    Winner Certificate ({title})
-                  </h3>
-                  <span className="ml-auto shrink-0">
-                    {isAvailable ? (
-                      <Badge tone="green">
-                        <CheckCircle2 size={10} />
-                        Available
-                      </Badge>
-                    ) : (
-                      <Badge tone="neutral">
-                        <LockKeyhole size={10} />
-                        Locked
-                      </Badge>
-                    )}
-                  </span>
-                </div>
-                <button
-                  disabled={
-                    !isAvailable ||
-                    isWinnerMintingItem ||
-                    isWinnerMintedItem
-                  }
-                  onClick={() =>
-                    handleMintWinnerCertificate(targetWinnerId, title)
-                  }
-                  className={`mt-5 rounded-lg px-3 py-3 text-xs ${
-                    isAvailable &&
-                    !isWinnerMintingItem &&
-                    !isWinnerMintedItem
-                      ? "bg-slate-900 text-white hover:bg-slate-800"
-                      : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
-                  }`}
-                >
-                  {isWinnerMintedItem
-                    ? `Winner Certificate (${title}) Minted`
-                    : isWinnerMintingItem
-                      ? `Minting Certificate (${title})...`
-                      : `Mint Winner Certificate (${title}) NFT`}
-                </button>
-                {itemError ? (
-                  <p
-                    role="alert"
-                    className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
-                  >
-                    {itemError}
-                  </p>
-                ) : null}
-                {winCid ? (
-                  <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
-                    Certificate CID:{" "}
-                    <span className="font-mono break-all">{winCid}</span>
-                  </p>
-                ) : (
-                  <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
-                    Available after final judging and prize settlement.
-                  </p>
-                )}
+          const targetWinnerId = myWinner
+            ? myWinner.winner_id
+              ? String(myWinner.winner_id)
+              : myWinner.id
+                ? String(myWinner.id)
+                : null
+            : null
+
+          const title = myWinner?.category || myWinner?.title || ""
+          const winCid = myWinner?.certificate_cid || certificateCid
+          const isWinnerMintingItem =
+            Boolean(mintingWinnerIds["default"]) ||
+            (targetWinnerId ? Boolean(mintingWinnerIds[targetWinnerId]) : false) ||
+            Object.values(mintingWinnerIds).some(Boolean)
+          const isWinnerMintedItem =
+            Boolean(mintedWinnerIds["default"]) ||
+            (targetWinnerId ? Boolean(mintedWinnerIds[targetWinnerId]) : false) ||
+            Object.values(mintedWinnerIds).some(Boolean)
+          const itemError =
+            (targetWinnerId ? winnerMintErrors[targetWinnerId] : null) ||
+            winnerMintErrors["default"] ||
+            Object.values(winnerMintErrors).find(Boolean) ||
+            null
+
+          return (
+            <div className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5">
+              <div className="flex items-center gap-2">
+                <FileBadge size={23} className="text-slate-400" />
+                <h3 className="text-sm font-bold truncate">
+                  Winner Certificate{title ? ` (${title})` : ""}
+                </h3>
+                <span className="ml-auto shrink-0">
+                  {isAvailable ? (
+                    <Badge tone="green">
+                      <CheckCircle2 size={10} />
+                      Available
+                    </Badge>
+                  ) : (
+                    <Badge tone="neutral">
+                      <LockKeyhole size={10} />
+                      Locked
+                    </Badge>
+                  )}
+                </span>
               </div>
-            )
-          })
-        ) : (
-          <div className="flex flex-col rounded-xl border border-border/60 bg-slate-50 p-5">
-            <div className="flex items-center gap-2">
-              <FileBadge size={23} className="text-slate-400" />
-              <h3 className="text-sm font-bold">Winner Certificate</h3>
-              <span className="ml-auto">
-                {isAvailable ? (
-                  <Badge tone="green">
-                    <CheckCircle2 size={10} />
-                    Available
-                  </Badge>
-                ) : (
-                  <Badge tone="neutral">
-                    <LockKeyhole size={10} />
-                    Locked
-                  </Badge>
-                )}
-              </span>
-            </div>
-            <button
-              disabled={
-                !isAvailable ||
-                Boolean(mintingWinnerIds["default"]) ||
-                Boolean(mintedWinnerIds["default"])
-              }
-              onClick={() => handleMintWinnerCertificate(null, "")}
-              className={`mt-5 rounded-lg px-3 py-3 text-xs ${
-                isAvailable &&
-                !mintingWinnerIds["default"] &&
-                !mintedWinnerIds["default"]
-                  ? "bg-slate-900 text-white hover:bg-slate-800"
-                  : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
-              }`}
-            >
-              {mintedWinnerIds["default"]
-                ? "Winner Certificate Minted"
-                : mintingWinnerIds["default"]
-                  ? "Minting Winner Certificate..."
-                  : "Mint Winner Certificate NFT"}
-            </button>
-            {winnerMintErrors["default"] ? (
-              <p
-                role="alert"
-                className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
+              <button
+                disabled={!isAvailable || isWinnerMintingItem || isWinnerMintedItem}
+                onClick={() => handleMintWinnerCertificate(targetWinnerId, title)}
+                className={`mt-5 rounded-lg px-3 py-3 text-xs ${
+                  isAvailable && !isWinnerMintingItem && !isWinnerMintedItem
+                    ? "bg-slate-900 text-white hover:bg-slate-800"
+                    : "bg-slate-200/70 text-slate-500 cursor-not-allowed"
+                }`}
               >
-                {winnerMintErrors["default"]}
-              </p>
-            ) : null}
-            <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
-              Available after final judging and prize settlement.
-            </p>
-          </div>
-        )}
+                {isWinnerMintedItem
+                  ? `Winner Certificate${title ? ` (${title})` : ""} Minted`
+                  : isWinnerMintingItem
+                    ? `Minting Winner Certificate${title ? ` (${title})` : ""}...`
+                    : `Mint Winner Certificate${title ? ` (${title})` : ""} NFT`}
+              </button>
+              {itemError ? (
+                <p
+                  role="alert"
+                  className="mt-3 rounded-md border border-red-200 bg-red-50 px-2 py-2 text-[11px] leading-4 text-red-700"
+                >
+                  {itemError}
+                </p>
+              ) : null}
+              {winCid ? (
+                <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+                  Certificate CID:{" "}
+                  <span className="font-mono break-all">{winCid}</span>
+                </p>
+              ) : (
+                <p className="mt-3 text-[10px] leading-5 text-muted-foreground">
+                  Available after final judging and prize settlement.
+                </p>
+              )}
+            </div>
+          )
+        })()}
       </div>
     </Panel>
   )

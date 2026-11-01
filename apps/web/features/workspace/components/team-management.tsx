@@ -1,6 +1,6 @@
 "use client"
 import { useEffect, useReducer, useState } from "react"
-import { Pencil, Trash2, Users } from "lucide-react"
+import { Plus, Check, Pencil, Trash2, Users } from "lucide-react"
 import { Button } from "@workspace/ui/components/button"
 import {
   Badge,
@@ -13,6 +13,13 @@ import { mockTeam } from "../data/workspace"
 import { teamReducer } from "../lib/team-reducer"
 import type { TeamState } from "../types"
 import { parseCapacityFromFormation } from "@/lib/competitions-api"
+
+const defaultSuggestions = [
+  "UI/UX Designer",
+  "ML / PyTorch",
+  "Rust / Stylus",
+  "Web3 Smart Contracts",
+]
 
 export function TeamManagement({
   capacity,
@@ -29,7 +36,7 @@ export function TeamManagement({
   onRename?: (name: string) => boolean
   onUpdateTeam?: (payload: {
     name?: string
-    description?: string
+    requirement?: string
     visibility?: boolean
     skills_team?: string[]
   }) => Promise<{ success: boolean; error?: string }>
@@ -40,6 +47,34 @@ export function TeamManagement({
   const [description, setDescription] = useState(team.description || "")
   const [visibility, setVisibility] = useState<boolean>(team.visibility ?? true)
   const [skillsInput, setSkillsInput] = useState((team.skills || []).join(", "))
+  const [suggestions, setSuggestions] = useState<string[]>(defaultSuggestions)
+  const [customTag, setCustomTag] = useState("")
+
+  function toggleTag(tag: string) {
+    const current = skillsInput
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean)
+    const exists = current.includes(tag)
+    const updated = exists ? current.filter((t: string) => t !== tag) : [...current, tag]
+    setSkillsInput(updated.join(", "))
+  }
+
+  function handleAddCustomTag() {
+    const trimmed = customTag.trim()
+    if (!trimmed) return
+    if (!suggestions.includes(trimmed)) {
+      setSuggestions((prev) => [...prev, trimmed])
+    }
+    const current = skillsInput
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean)
+    if (!current.includes(trimmed)) {
+      setSkillsInput([...current, trimmed].join(", "))
+    }
+    setCustomTag("")
+  }
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [modalError, setModalError] = useState("")
   const [removing, setRemoving] = useState<string | null>(null)
@@ -95,7 +130,18 @@ export function TeamManagement({
                 setName(team.name)
                 setDescription(team.description || "")
                 setVisibility(team.visibility ?? true)
-                setSkillsInput((team.skills || []).join(", "))
+                const teamSkills = team.skills || []
+                setSkillsInput(teamSkills.join(", "))
+                setSuggestions((prev) => {
+                  const merged = [...prev]
+                  for (const s of teamSkills) {
+                    if (s && !merged.includes(s)) {
+                      merged.push(s)
+                    }
+                  }
+                  return merged
+                })
+                setCustomTag("")
                 setModalError("")
                 setEditing(true)
               }}
@@ -154,13 +200,13 @@ export function TeamManagement({
 
               const parsedSkills = skillsInput
                 .split(",")
-                .map((s) => s.trim())
+                .map((s: string) => s.trim())
                 .filter(Boolean)
 
               if (onUpdateTeam) {
                 const res = await onUpdateTeam({
                   name: name.trim(),
-                  description: description.trim(),
+                  requirement: description.trim(),
                   visibility,
                   skills_team: parsedSkills,
                 })
@@ -235,15 +281,71 @@ export function TeamManagement({
               </select>
             </label>
 
-            <label className="block text-sm font-semibold">
-              Skills needed / suggestions <span className="text-xs font-normal text-muted-foreground">(comma separated)</span>
-              <input
-                className={fieldClass + " mt-1.5"}
-                value={skillsInput}
-                onChange={(event) => setSkillsInput(event.target.value)}
-                placeholder="e.g. Smart Contracts, Frontend, AI/ML"
-              />
-            </label>
+            <div>
+              <label className="block text-sm font-semibold mb-1.5">
+                Skills needed <span className="text-xs font-normal text-muted-foreground">(tap tags below or add custom)</span>
+              </label>
+              <div className="flex items-center justify-between">
+                <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                  Quick suggestion tags (tap to select/unselect)
+                </p>
+                {(() => {
+                  const currentTags = skillsInput.split(",").map((s: string) => s.trim()).filter(Boolean)
+                  return currentTags.length > 0 ? (
+                    <span className="text-[10px] text-teal-700 font-semibold bg-teal-50 px-2 py-0.5 rounded-full border border-teal-200">
+                      {currentTags.length} tag(s) selected
+                    </span>
+                  ) : null
+                })()}
+              </div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {suggestions.map((suggestion) => {
+                  const currentTags = skillsInput.split(",").map((s: string) => s.trim()).filter(Boolean)
+                  const isSelected = currentTags.includes(suggestion)
+                  return (
+                    <button
+                      key={suggestion}
+                      type="button"
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all ${
+                        isSelected
+                          ? "bg-teal-600 text-white shadow-sm hover:bg-teal-700 ring-2 ring-teal-600/30"
+                          : "bg-blue-50 text-blue-900 hover:bg-blue-100 border border-blue-200/70"
+                      }`}
+                      onClick={() => toggleTag(suggestion)}
+                    >
+                      {isSelected ? <Check size={12} className="stroke-[2.5]" /> : <Plus size={12} />}
+                      <span>{suggestion}</span>
+                    </button>
+                  )
+                })}
+              </div>
+              <div className="mt-3 flex gap-2">
+                <input
+                  type="text"
+                  value={customTag}
+                  onChange={(event) => setCustomTag(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault()
+                      handleAddCustomTag()
+                    }
+                  }}
+                  placeholder="Add custom suggestion tag (e.g. Frontend / React)..."
+                  className="flex-1 rounded-xl border border-input bg-white px-3 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddCustomTag}
+                  disabled={!customTag.trim()}
+                  className="h-auto py-1.5 px-3 text-xs gap-1"
+                >
+                  <Plus size={12} />
+                  Add Tag
+                </Button>
+              </div>
+            </div>
 
             <div className="flex justify-end gap-3 pt-3">
               <Button

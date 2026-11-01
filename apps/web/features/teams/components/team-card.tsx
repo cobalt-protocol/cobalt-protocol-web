@@ -7,6 +7,7 @@ interface TeamCardProps {
   capacity: number
   disabled: boolean
   isSubmitting?: boolean
+  isRefreshing?: boolean
   onRequest: () => void
   onDiscard?: () => void
   onRefresh?: () => void
@@ -16,6 +17,7 @@ export function TeamCard({
   capacity,
   disabled,
   isSubmitting = false,
+  isRefreshing = false,
   onRequest,
   onDiscard,
   onRefresh,
@@ -37,10 +39,11 @@ export function TeamCard({
             <button
               type="button"
               onClick={onRefresh}
+              disabled={isRefreshing}
               aria-label={`Refresh recommendation for ${team.name}`}
-              className="rounded p-2 hover:bg-blue-50"
+              className="rounded p-2 hover:bg-blue-50 disabled:opacity-50"
             >
-              <RefreshCw size={14} />
+              <RefreshCw size={14} className={isRefreshing ? "animate-spin text-primary" : ""} />
             </button>
             <button
               type="button"

@@ -8,6 +8,13 @@ import {
 } from "@/components/ui/page-primitives"
 import { Button } from "@workspace/ui/components/button"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@workspace/ui/components/select"
+import {
   AtSign,
   Check,
   CloudUpload,
@@ -339,21 +346,28 @@ export function ProfileEditor({
             value={skillName}
             onChange={(event) => setSkillName(event.target.value)}
           />
-          <select
-            aria-label="Skill level"
+          <Select
             value={level}
-            className={fieldClass + " w-auto"}
-            onChange={(event) => {
-              const selectedLevel = skillLevels.find(
-                (item) => item === event.target.value
-              )
-              if (selectedLevel) setLevel(selectedLevel)
+            onValueChange={(val) => {
+              if (val) {
+                const selectedLevel = skillLevels.find(
+                  (item) => item === val
+                )
+                if (selectedLevel) setLevel(selectedLevel)
+              }
             }}
           >
-            {skillLevels.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
+            <SelectTrigger aria-label="Skill level" className={fieldClass + " w-44 h-11"}>
+              <SelectValue placeholder="Select level" />
+            </SelectTrigger>
+            <SelectContent>
+              {skillLevels.map((item) => (
+                <SelectItem key={item} value={item}>
+                  {item}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           <Button
             type="button"
             className="h-11"

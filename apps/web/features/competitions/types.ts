@@ -72,6 +72,10 @@ export interface Competition {
   fee_token_address?: string | null
   prizeDeposits?: readonly CompetitionPrizeDeposit[] | null
   prizeDepositsTotalRaw?: string | null
+  indexer_state?: any | null
+  contract_address?: string | null
+  contractAddress?: string | null
+
 }
 export type CompetitionSort =
   "prize-desc" | "deadline-asc" | "participants-desc"

@@ -2,6 +2,7 @@ import { NotFoundUI } from "@/components/ui/not-found-ui"
 import type { Metadata } from "next"
 import { getCompetitionById } from "@/features/competitions/data/competition-repository"
 import { CompetitionDetail } from "@/features/competitions/components/competition-detail"
+import { CompetitionChatbot } from "@/components/chatbot/competition-chatbot"
 
 export const dynamic = "force-dynamic"
 
@@ -30,12 +31,15 @@ export default async function CompetitionPage({ params }: PageProps) {
   }
 
   return (
-    <CompetitionDetail
-      competition={competition}
-      id={id}
-      slug={competition.slug}
-      viewMode="user"
-    />
+    <>
+      <CompetitionDetail
+        competition={competition}
+        id={id}
+        slug={competition.slug}
+        viewMode="user"
+      />
+      <CompetitionChatbot competitionId={id} competitionTitle={competition.title} />
+    </>
   )
 }
 

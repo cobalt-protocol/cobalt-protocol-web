@@ -83,7 +83,7 @@ export function RegisteredTeam({
 
   const handleUpdateTeam = async (payload: {
     name?: string
-    description?: string
+    requirement?: string
     visibility?: boolean
     skills_team?: string[]
   }) => {
@@ -92,7 +92,17 @@ export function RegisteredTeam({
       return { success: true }
     }
 
-    const res = await updateTeamApi(chainId, effectiveTeamId, payload, storedToken)
+    const res = await updateTeamApi(
+      chainId,
+      effectiveTeamId,
+      {
+        name: payload.name,
+        requirement: payload.requirement,
+        visibility: payload.visibility,
+        skills_team: payload.skills_team,
+      },
+      storedToken
+    )
     if (res.success) {
       if (payload.name) {
         renameTeam(competitionSlug, payload.name)
@@ -117,7 +127,7 @@ export function RegisteredTeam({
 
   const teamName = apiTeam?.name || membership?.teamName || "My Team"
   const isPrivate = apiTeam ? !apiTeam.visibility : membership?.visibility === "private"
-  const requirements = apiTeam?.description || membership?.requirements || ""
+  const requirements = apiTeam?.requirement || apiTeam?.requirements_team?.requirement || apiTeam?.description || membership?.requirements || ""
   const inviteCode =
     apiTeam?.team_codes?.[0]?.code ||
     (apiTeam as any)?.team_code ||
@@ -196,7 +206,7 @@ export function RegisteredTeam({
         onUpdateTeam={handleUpdateTeam}
         initialTeam={{
           name: teamName,
-          description: apiTeam?.description || "",
+          description: apiTeam?.requirement || apiTeam?.requirements_team?.requirement || apiTeam?.description || "",
           visibility: apiTeam ? apiTeam.visibility : (membership?.visibility !== "private"),
           skills: apiTeam?.skills_team?.map((s: { name: string }) => s.name) || [],
           members: initialMembers,
